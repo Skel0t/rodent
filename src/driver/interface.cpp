@@ -500,13 +500,23 @@ struct Interface {
     // TODO: alb, nrm?
     void present(int32_t dev) {
         anydsl::copy(devices[dev].film_pixels, host_pixels);
+        anydsl::copy(devices[dev].d_alb_pixels, alb_pixels);
+        anydsl::copy(devices[dev].d_nrm_pixels, nrm_pixels);
     }
     void clear() {
         std::fill(host_pixels.begin(), host_pixels.end(), 0.0f);
+        std::fill(alb_pixels.begin(), alb_pixels.end(), 0.0f);
+        std::fill(nrm_pixels.begin(), nrm_pixels.end(), 0.0f);
         for (auto& pair : devices) {
             auto& device_pixels = devices[pair.first].film_pixels;
+            auto& device_normal = devices[pair.first].d_nrm_pixels;
+            auto& device_albedo = devices[pair.first].d_alb_pixels;
             if (device_pixels.size())
                 anydsl::copy(host_pixels, device_pixels);
+            if (device_albedo.size())
+                anydsl::copy(alb_pixels, device_albedo);
+            if (device_normal.size())
+                anydsl::copy(nrm_pixels, device_normal);
         }
     }
 };
