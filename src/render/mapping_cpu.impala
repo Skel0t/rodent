@@ -130,6 +130,12 @@ fn @cpu_compact_primary(primary: &PrimaryStream, vector_width: i32, vector_compa
                     primary.contrib_r(k + j) = rv_compact(primary.contrib_r(i + j), mask);
                     primary.contrib_g(k + j) = rv_compact(primary.contrib_g(i + j), mask);
                     primary.contrib_b(k + j) = rv_compact(primary.contrib_b(i + j), mask);
+                    primary.albedo_r(k + j) = rv_compact(primary.albedo_r(i + j), mask);
+                    primary.albedo_g(k + j) = rv_compact(primary.albedo_g(i + j), mask);
+                    primary.albedo_b(k + j) = rv_compact(primary.albedo_b(i + j), mask);
+                    primary.normal_r(k + j) = rv_compact(primary.normal_r(i + j), mask);
+                    primary.normal_g(k + j) = rv_compact(primary.normal_g(i + j), mask);
+                    primary.normal_b(k + j) = rv_compact(primary.normal_b(i + j), mask);
                     primary.depth(k + j)     = bitcast[i32](rv_compact(bitcast[f32](primary.depth(i + j)), mask));
 
                     k += cpu_popcount32(rv_ballot(mask));
