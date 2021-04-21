@@ -126,14 +126,10 @@ fn @make_path_tracing_renderer(max_path_len: i32, spp: i32)-> Renderer {
             let mut normal = black;
             if (is_black(state.normal)) {
                 // TODO: Do we need accumulate? We only accumulate this if we end in a light source
-                //state.albedo = mat.bsdf.eval(ray.dir, surf.face_normal);
-                //state.normal = vec3_to_color(vec3_add(vec3_mulf(surf.face_normal, 0.5f), make_vec3(0.5f, 0.5f, 0.5f)));
-                //albedo = state.albedo;
-                //normal = state.normal;
-                albedo = mat.bsdf.eval(ray.dir, surf.face_normal);
-                normal = vec3_to_color(vec3_add(vec3_mulf(surf.face_normal, 0.5f), make_vec3(0.5f, 0.5f, 0.5f)));
-
-
+                state.albedo = mat.bsdf.eval(ray.dir, surf.face_normal);
+                state.normal = vec3_to_color(vec3_add(vec3_mulf(surf.face_normal, 0.5f), make_vec3(0.5f, 0.5f, 0.5f)));
+                albedo = state.albedo;
+                normal = state.normal;
             }
             // Hits on a light source
             if mat.is_emissive && surf.is_entering {
