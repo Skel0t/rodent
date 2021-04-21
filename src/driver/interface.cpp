@@ -335,6 +335,8 @@ struct Interface {
         anydsl::Array<float> second_primary;
         anydsl::Array<float> secondary;
         anydsl::Array<float> film_pixels;
+        anydsl::Array<float> d_alb_pixels;
+        anydsl::Array<float> d_nrm_pixels;
     };
     std::unordered_map<int32_t, DeviceData> devices;
 
@@ -346,6 +348,8 @@ struct Interface {
 #endif
 
     anydsl::Array<float> host_pixels;
+    anydsl::Array<float> alb_pixels;
+    anydsl::Array<float> nrm_pixels;
     size_t film_width;
     size_t film_height;
 
@@ -353,6 +357,8 @@ struct Interface {
         : film_width(width)
         , film_height(height)
         , host_pixels(width * height * 3)
+        , alb_pixels(width * height * 3)
+        , nrm_pixels(width * height * 3)
     {}
 
     template <typename T>
@@ -366,7 +372,7 @@ struct Interface {
     }
 
     anydsl::Array<float>& cpu_primary_stream(size_t size) {
-        return resize_array(0, cpu_primary, size, 20);
+        return resize_array(0, cpu_primary, size, 26);
     }
 
     anydsl::Array<float>& cpu_secondary_stream(size_t size) {
@@ -491,6 +497,7 @@ struct Interface {
         return images[filename] = std::move(copy_to_device(dev, img));
     }
 
+    // TODO: alb, nrm?
     void present(int32_t dev) {
         anydsl::copy(devices[dev].film_pixels, host_pixels);
     }
@@ -521,6 +528,14 @@ float* get_pixels() {
     return interface->host_pixels.data();
 }
 
+float* get_alb_pixels() {
+    return interface->alb_pixels.data();
+}
+
+float* get_nrm_pixels() {
+    return interface->nrm_pixels.data();
+}
+
 void clear_pixels() {
     return interface->clear();
 }
@@ -549,7 +564,13 @@ inline void get_primary_stream(PrimaryStream& primary, float* ptr, size_t capaci
     primary.contrib_r = ptr + 16 * capacity;
     primary.contrib_g = ptr + 17 * capacity;
     primary.contrib_b = ptr + 18 * capacity;
-    primary.depth     = (int*)ptr + 19 * capacity;
+    primary.albedo_r = ptr + 19 * capacity;
+    primary.albedo_g = ptr + 20 * capacity;
+    primary.albedo_b = ptr + 21 * capacity;
+    primary.normal_r = ptr + 22 * capacity;
+    primary.normal_g = ptr + 23 * capacity;
+    primary.normal_b = ptr + 24 * capacity;
+    primary.depth     = (int*)ptr + 25 * capacity;
     primary.size = 0;
 }
 
@@ -564,7 +585,7 @@ inline void get_secondary_stream(SecondaryStream& secondary, float* ptr, size_t 
 
 extern "C" {
 
-void rodent_get_film_data(int32_t dev, float** pixels, int32_t* width, int32_t* height) {
+void rodent_get_film_data(int32_t dev, float** pixels, float** alb_pixels, float** nrm_pixels, int32_t* width, int32_t* height) {
     if (dev != 0) {
         auto& device = interface->devices[dev];
         if (!device.film_pixels.size()) {
@@ -574,8 +595,11 @@ void rodent_get_film_data(int32_t dev, float** pixels, int32_t* width, int32_t* 
             anydsl::copy(interface->host_pixels, device.film_pixels);
         }
         *pixels = device.film_pixels.data();
+        // TODO: If not on CPU, also allocate alb, nrm pixels memory
     } else {
         *pixels = interface->host_pixels.data();
+        *alb_pixels = interface->alb_pixels.data();
+        *nrm_pixels = interface->nrm_pixels.data();
     }
     *width  = interface->film_width;
     *height = interface->film_height;
@@ -620,7 +644,7 @@ void rodent_load_bvh8_tri4(int32_t dev, const char* file, Node8** nodes, Tri4** 
 
 void rodent_cpu_get_primary_stream(PrimaryStream* primary, int32_t size) {
     auto& array = interface->cpu_primary_stream(size);
-    get_primary_stream(*primary, array.data(), array.size() / 20);
+    get_primary_stream(*primary, array.data(), array.size() / 26);
 }
 
 void rodent_cpu_get_secondary_stream(SecondaryStream* secondary, int32_t size) {

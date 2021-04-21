@@ -1,7 +1,9 @@
 # Auto generated interfaces
 tools/common/traversal.h
 tools/common/shading.h
+tools/common/interface.h
 src/driver/interface.h
+build/
 
 # Compiled Object files
 *.slo

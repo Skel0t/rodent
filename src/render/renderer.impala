@@ -1,6 +1,6 @@
 struct PathTracer {
     on_emit:   RayEmitter,
-    on_hit:    fn (Ray, Hit, &mut RayState, SurfaceElement, Material, fn (Color) -> !) -> (),
+    on_hit:    fn (Ray, Hit, &mut RayState, SurfaceElement, Material, fn (Color, Color, Color) -> !) -> (),
     on_shadow: fn (Ray, Hit, &mut RayState, SurfaceElement, Material, fn (Ray, Color) -> !) -> (),
     on_bounce: fn (Ray, Hit, &mut RayState, SurfaceElement, Material, fn (Ray, RayState) -> !) -> (),
 }
@@ -8,6 +8,8 @@ struct PathTracer {
 struct RayState {
     rnd:     RndState,
     contrib: Color,
+    albedo:  Color,
+    normal:  Color,
     mis:     f32,
     depth:   i32
 }
@@ -18,6 +20,8 @@ fn @make_ray_state(rnd: RndState, contrib: Color, mis: f32, depth: i32) -> RaySt
     RayState {
         rnd: rnd,
         contrib: contrib,
+        albedo: black,
+        normal: black,
         mis: mis,
         depth: depth
     }
@@ -45,7 +49,7 @@ fn @make_debug_renderer() -> Renderer {
         let on_shadow = @ |_, _, _, _, _, _| ();
         let on_bounce = @ |_, _, _, _, _, _| ();
         let on_hit = @ |ray, hit, state, surf, mat, accumulate| {
-            accumulate(color_mulf(white, -vec3_dot(ray.dir, surf.local.col(2))))
+            accumulate(color_mulf(white, -vec3_dot(ray.dir, surf.local.col(2))), black, black)
         };
 
         let path_tracer = PathTracer {
@@ -115,16 +119,27 @@ fn @make_path_tracing_renderer(max_path_len: i32, spp: i32)-> Renderer {
                   , state: &mut RayState
                   , surf: SurfaceElement
                   , mat: Material
-                  , accumulate: fn (Color) -> !
+                  , accumulate: fn (Color, Color, Color) -> !
                   ) -> () {
+            let mut contrib = black;
+            let mut albedo = black;
+            let mut normal = black;
+            if (is_black(state.normal)) {
+                // TODO: Do we need accumulate? We only accumulate this if we end in a light source
+                state.albedo = mat.bsdf.eval(ray.dir, surf.face_normal);
+                state.normal = vec3_to_color(vec3_add(vec3_mulf(surf.face_normal, 0.5f), make_vec3(0.5f, 0.5f, 0.5f)));
+                albedo = state.albedo;
+                normal = state.normal;
+            }
             // Hits on a light source
             if mat.is_emissive && surf.is_entering {
                 let out_dir = vec3_neg(ray.dir);
                 let emit = mat.emission(out_dir);
                 let next_mis = state.mis * hit.distance * hit.distance / vec3_dot(out_dir, surf.local.col(2));
                 let mis = 1.0f / (1.0f + next_mis * pdf_lightpick * emit.pdf_area);
-                accumulate(color_mulf(color_mul(state.contrib, emit.intensity), mis))
+                contrib = color_mulf(color_mul(state.contrib, emit.intensity), mis);
             }
+            accumulate(contrib, albedo, normal)
         }
 
         fn @on_bounce( ray: Ray

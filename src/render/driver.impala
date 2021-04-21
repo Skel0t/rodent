@@ -1,7 +1,7 @@
 // Driver functions ----------------------------------------------------------------
 
 extern "C" {
-    fn rodent_get_film_data(i32, &mut &mut [f32], &mut i32, &mut i32) -> ();
+    fn rodent_get_film_data(i32, &mut &mut [f32], &mut &mut [f32], &mut &mut [f32], &mut i32, &mut i32) -> ();
     fn rodent_cpu_get_primary_stream(&mut PrimaryStream, i32) -> ();
     fn rodent_cpu_get_secondary_stream(&mut SecondaryStream, i32) -> ();
     fn rodent_gpu_get_first_primary_stream(i32, &mut PrimaryStream, i32) -> ();
@@ -45,6 +45,12 @@ struct PrimaryStream {
     contrib_r: &mut [f32],
     contrib_g: &mut [f32],
     contrib_b: &mut [f32],
+    albedo_r: &mut [f32],
+    albedo_g: &mut [f32],
+    albedo_b: &mut [f32],
+    normal_r: &mut [f32],
+    normal_g: &mut [f32],
+    normal_b: &mut [f32],
     depth: &mut [i32],
     size: i32,
     pad: i32 // TODO: Needed for AMDGPU backend
@@ -127,6 +133,8 @@ fn @make_primary_stream_state_reader(primary: PrimaryStream, vector_width: i32) 
         RayState {
             rnd:     primary.rnd(k),
             contrib: make_color(primary.contrib_r(k), primary.contrib_g(k), primary.contrib_b(k)),
+            albedo:  make_color(primary.albedo_r(k), primary.albedo_g(k), primary.albedo_b(k)),
+            normal:  make_color(primary.normal_r(k), primary.normal_g(k), primary.normal_b(k)),
             mis:     primary.mis(k),
             depth:   primary.depth(k)
         }
@@ -140,6 +148,12 @@ fn @make_primary_stream_state_writer(primary: PrimaryStream, vector_width: i32) 
         primary.contrib_r(k) = state.contrib.r;
         primary.contrib_g(k) = state.contrib.g;
         primary.contrib_b(k) = state.contrib.b;
+        primary.albedo_r(k) = state.albedo.r;
+        primary.albedo_g(k) = state.albedo.g;
+        primary.albedo_b(k) = state.albedo.b;
+        primary.normal_r(k) = state.normal.r;
+        primary.normal_g(k) = state.normal.g;
+        primary.normal_b(k) = state.normal.b;
         primary.mis(k)       = state.mis;
         primary.depth(k)     = state.depth;
     }
