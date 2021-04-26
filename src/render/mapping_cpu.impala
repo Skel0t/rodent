@@ -79,6 +79,12 @@ extern fn cpu_sort_primary(primary: &PrimaryStream, ray_begins: &mut [i32], ray_
                 swap_f32(&mut primary.contrib_r(k), &mut primary.contrib_r(j));
                 swap_f32(&mut primary.contrib_g(k), &mut primary.contrib_g(j));
                 swap_f32(&mut primary.contrib_b(k), &mut primary.contrib_b(j));
+                swap_f32(&mut primary.albedo_r(k),  &mut primary.albedo_r(j));
+                swap_f32(&mut primary.albedo_g(k),  &mut primary.albedo_g(j));
+                swap_f32(&mut primary.albedo_b(k),  &mut primary.albedo_b(j));
+                swap_f32(&mut primary.normal_r(k),  &mut primary.normal_r(j));
+                swap_f32(&mut primary.normal_g(k),  &mut primary.normal_g(j));
+                swap_f32(&mut primary.normal_b(k),  &mut primary.normal_b(j));
                 swap_i32(&mut primary.depth(k),     &mut primary.depth(j));
             } else {
                 j++;
@@ -130,12 +136,12 @@ fn @cpu_compact_primary(primary: &PrimaryStream, vector_width: i32, vector_compa
                     primary.contrib_r(k + j) = rv_compact(primary.contrib_r(i + j), mask);
                     primary.contrib_g(k + j) = rv_compact(primary.contrib_g(i + j), mask);
                     primary.contrib_b(k + j) = rv_compact(primary.contrib_b(i + j), mask);
-                    primary.albedo_r(k + j) = rv_compact(primary.albedo_r(i + j), mask);
-                    primary.albedo_g(k + j) = rv_compact(primary.albedo_g(i + j), mask);
-                    primary.albedo_b(k + j) = rv_compact(primary.albedo_b(i + j), mask);
-                    primary.normal_r(k + j) = rv_compact(primary.normal_r(i + j), mask);
-                    primary.normal_g(k + j) = rv_compact(primary.normal_g(i + j), mask);
-                    primary.normal_b(k + j) = rv_compact(primary.normal_b(i + j), mask);
+                    primary.albedo_r(k + j)  = rv_compact(primary.albedo_r(i + j), mask);
+                    primary.albedo_g(k + j)  = rv_compact(primary.albedo_g(i + j), mask);
+                    primary.albedo_b(k + j)  = rv_compact(primary.albedo_b(i + j), mask);
+                    primary.normal_r(k + j)  = rv_compact(primary.normal_r(i + j), mask);
+                    primary.normal_g(k + j)  = rv_compact(primary.normal_g(i + j), mask);
+                    primary.normal_b(k + j)  = rv_compact(primary.normal_b(i + j), mask);
                     primary.depth(k + j)     = bitcast[i32](rv_compact(bitcast[f32](primary.depth(i + j)), mask));
 
                     k += cpu_popcount32(rv_ballot(mask));
@@ -152,6 +158,12 @@ fn @cpu_compact_primary(primary: &PrimaryStream, vector_width: i32, vector_compa
                     primary.contrib_r(k) = primary.contrib_r(i);
                     primary.contrib_g(k) = primary.contrib_g(i);
                     primary.contrib_b(k) = primary.contrib_b(i);
+                    primary.albedo_r(k)  = primary.albedo_r(i);
+                    primary.albedo_g(k)  = primary.albedo_g(i);
+                    primary.albedo_b(k)  = primary.albedo_b(i);
+                    primary.normal_r(k)  = primary.normal_r(i);
+                    primary.normal_g(k)  = primary.normal_g(i);
+                    primary.normal_b(k)  = primary.normal_b(i);
                     primary.depth(k)     = primary.depth(i);
                     k++;
                 }
