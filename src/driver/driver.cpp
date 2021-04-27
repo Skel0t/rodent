@@ -14,6 +14,7 @@
 #include "float3.h"
 #include "common.h"
 #include "image.h"
+#include "denoiser.h"
 
 #if defined(__x86_64__) || defined(__amd64__) || defined(_M_X64)
 #include <x86intrin.h>
@@ -215,6 +216,39 @@ static void save_normal(const std::string& out_file, size_t width, size_t height
         error("Failed to save PNG file '", out_file, "'");
 }
 
+static void save_denoised(const std::string& out_file, size_t width, size_t height, uint32_t iter) {
+    // Denoise:
+    float* outputPtr = (float*)malloc(width * height * 3 * sizeof(float));
+    denoise(get_pixels(), get_alb_pixels(), get_nrm_pixels(), outputPtr, width, height);
+    
+    // Save the denoised image:
+    ImageRgba32 img;
+    img.width = width;
+    img.height = height;
+    img.pixels.reset(new uint8_t[width * height * 4]);
+
+    auto film = outputPtr;
+    auto inv_iter = 1.0f / iter;
+    auto inv_gamma = 1.0f / 2.2f;
+    for (size_t y = 0; y < height; ++y) {
+        for (size_t x = 0; x < width; ++x) {
+            auto r = film[(y * width + x) * 3 + 0];
+            auto g = film[(y * width + x) * 3 + 1];
+            auto b = film[(y * width + x) * 3 + 2];
+
+            img.pixels[4 * (y * width + x) + 0] = clamp(std::pow(r * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
+            img.pixels[4 * (y * width + x) + 1] = clamp(std::pow(g * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
+            img.pixels[4 * (y * width + x) + 2] = clamp(std::pow(b * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
+            img.pixels[4 * (y * width + x) + 3] = 255;
+        }
+    }
+
+    free(outputPtr);
+
+    if (!save_png(out_file, img))
+        error("Failed to save PNG file '", out_file, "'");
+}
+
 static inline void check_arg(int argc, char** argv, int arg, int n) {
     if (arg + n >= argc)
         error("Option '", argv[arg], "' expects ", n, " arguments, got ", argc - arg);
@@ -241,6 +275,8 @@ int main(int argc, char** argv) {
     size_t height = 720;
     float fov = 60.0f;
     float3 eye(0.0f), dir(0.0f, 0.0f, 1.0f), up(0.0f, 1.0f, 0.0f);
+    bool oidn = false;
+    bool aux = false;
 
     for (int i = 1; i < argc; ++i) {
         if (argv[i][0] == '-') {
@@ -274,6 +310,10 @@ int main(int argc, char** argv) {
             } else if (!strcmp(argv[i], "-o")) {
                 check_arg(argc, argv, i, 1);
                 out_file = argv[++i];
+            } else if (!strcmp(argv[i], "--oidn")) {
+                oidn = true;
+            } else if (!strcmp(argv[i], "--aux")) {
+                aux = true;
             } else if (!strcmp(argv[i], "--help")) {
                 usage();
                 return 0;
@@ -387,8 +427,13 @@ int main(int argc, char** argv) {
 
     if (out_file != "") {
         save_image(out_file, width, height, iter);
-        save_albedo("albedo.png", width, height, iter);
-        save_normal("normal.png", width, height, iter);
+        if(aux) {
+            save_albedo("albedo.png", width, height, iter);
+            save_normal("normal.png", width, height, iter);
+        }
+        if(oidn) {
+            save_denoised("denoised.png", width, height, iter);
+        }
         info("Image saved to '", out_file, "'");
     }
 

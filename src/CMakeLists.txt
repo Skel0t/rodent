@@ -57,7 +57,9 @@ set(DRIVER_SRCS
     driver/float4.h
     driver/file_path.h
     driver/common.h
-    driver/color.h)
+    driver/color.h
+    driver/denoiser.h
+    driver/denoiser.cpp)
 
 set(CONVERTER_SRCS
     driver/converter.cpp

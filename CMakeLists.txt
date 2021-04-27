@@ -22,6 +22,9 @@ if (WIN32)
 endif ()
 set(COLORIZE ${COLOR_TTY_AVAILABLE} CACHE BOOL "Set to TRUE to enable colorized output. Requires an ANSI compliant terminal.")
 
+
+include(cmake/modules/FindOidn.cmake)
+
 # Try to find Embree
 find_path(EMBREE_ROOT_DIR include/embree3/rtcore.h DOC "Embree source code directory")
 find_path(EMBREE_LIBRARY_DIR

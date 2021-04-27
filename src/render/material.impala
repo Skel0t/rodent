@@ -3,6 +3,7 @@ struct Material {
     bsdf:        Bsdf,
     emission:    fn (Vec3) -> EmissionValue,
     is_emissive: bool
+    
 }
 
 // Opaque description of a point on a surface
@@ -32,7 +33,9 @@ struct Bsdf {
     // Samples a direction
     sample: fn (&mut RndState, Vec3, bool) -> BsdfSample,
     // Returns true if the material is purely specular
-    is_specular: bool
+    is_specular: bool,
+    // Returns the albedo color
+    albedo: fn () -> Color
 }
 
 fn @fresnel_factor(k: f32, cos_i: f32, cos_t: f32) -> f32 {
@@ -77,7 +80,8 @@ fn @make_black_bsdf() -> Bsdf {
         eval:   @ |_, _| black,
         pdf:    @ |_, _| 0.0f,
         sample: @ |_, out_dir, _| BsdfSample { in_dir: out_dir, pdf: 1.0f, cos: 1.0f, color: black },
-        is_specular: false
+        is_specular: false,
+        albedo: @ || black
     }
 }
 
@@ -95,7 +99,10 @@ fn @make_diffuse_bsdf(math: Intrinsics, surf: SurfaceElement, kd: Color) -> Bsdf
             let color = color_mulf(kd, 1.0f / flt_pi);
             make_bsdf_sample(surf, mat3x3_mul(surf.local, sample.dir), sample.pdf, sample.dir.z, color, false)
         },
-        is_specular: false
+        is_specular: false,
+        albedo: @ || {
+            color_mulf(kd, 1.0f / flt_pi)
+        }
     }
 }
 
@@ -118,7 +125,10 @@ fn @make_phong_bsdf(math: Intrinsics, surf: SurfaceElement, ks: Color, ns: f32) 
             let color = color_mulf(ks, sample.pdf * (ns + 2.0f) / (ns + 1.0f));
             make_bsdf_sample(surf, in_dir, sample.pdf, cos, color, false)
         },
-        is_specular: false
+        is_specular: false,
+        albedo: @ || {
+            color_mulf(ks, 1.0f / flt_pi)
+        }
     }
 }
 
@@ -130,7 +140,8 @@ fn @make_mirror_bsdf(math: Intrinsics, surf: SurfaceElement, ks: Color) -> Bsdf 
         sample: @ |rnd, out_dir, _| {
             make_bsdf_sample(surf, vec3_reflect(out_dir, surf.local.col(2)), 1.0f, 1.0f, ks, false)
         },
-        is_specular: true
+        is_specular: true,
+        albedo: @ || white
     }
 }
 
@@ -158,7 +169,8 @@ fn @make_glass_bsdf(math: Intrinsics, surf: SurfaceElement, n1: f32, n2: f32, ks
             // Reflection
             make_bsdf_sample(surf, vec3_reflect(out_dir, n), 1.0f, 1.0f, ks, false)
         },
-        is_specular: true
+        is_specular: true,
+        albedo: @ || white
     }
 }
 
@@ -187,6 +199,10 @@ fn @make_mix_bsdf(mat1: Bsdf, mat2: Bsdf, k: f32) -> Bsdf {
             };
             BsdfSample { in_dir: sample.in_dir, pdf: pdf, cos: sample.cos, color: color }
         },
-        is_specular: mat1.is_specular & mat2.is_specular
+        is_specular: mat1.is_specular & mat2.is_specular,
+        albedo: @ || 
+            color_lerp(mat1.albedo(),
+                       mat2.albedo(),
+                       k)
     }
 }
