@@ -380,11 +380,11 @@ struct Interface {
     }
 
     anydsl::Array<float>& gpu_first_primary_stream(int32_t dev, size_t size) {
-        return resize_array(dev, devices[dev].first_primary, size, 20);
+        return resize_array(dev, devices[dev].first_primary, size, 26);
     }
 
     anydsl::Array<float>& gpu_second_primary_stream(int32_t dev, size_t size) {
-        return resize_array(dev, devices[dev].second_primary, size, 20);
+        return resize_array(dev, devices[dev].second_primary, size, 26);
     }
 
     anydsl::Array<float>& gpu_secondary_stream(int32_t dev, size_t size) {
@@ -497,7 +497,6 @@ struct Interface {
         return images[filename] = std::move(copy_to_device(dev, img));
     }
 
-    // TODO: alb, nrm?
     void present(int32_t dev) {
         anydsl::copy(devices[dev].film_pixels, host_pixels);
         anydsl::copy(devices[dev].d_alb_pixels, alb_pixels);
@@ -603,8 +602,18 @@ void rodent_get_film_data(int32_t dev, float** pixels, float** alb_pixels, float
             auto film_data = reinterpret_cast<float*>(anydsl_alloc(dev, sizeof(float) * film_size));
             device.film_pixels = std::move(anydsl::Array<float>(dev, film_data, film_size));
             anydsl::copy(interface->host_pixels, device.film_pixels);
+
+            auto alb_data = reinterpret_cast<float*>(anydsl_alloc(dev, sizeof(float) * film_size));
+            device.d_alb_pixels = std::move(anydsl::Array<float>(dev, alb_data, film_size));
+            anydsl::copy(interface->alb_pixels, device.d_alb_pixels);
+
+            auto nrm_data = reinterpret_cast<float*>(anydsl_alloc(dev, sizeof(float) * film_size));
+            device.d_nrm_pixels = std::move(anydsl::Array<float>(dev, nrm_data, film_size));
+            anydsl::copy(interface->nrm_pixels, device.d_nrm_pixels);
         }
         *pixels = device.film_pixels.data();
+        *alb_pixels = device.d_alb_pixels.data();
+        *nrm_pixels = device.d_nrm_pixels.data();
         // TODO: If not on CPU, also allocate alb, nrm pixels memory
     } else {
         *pixels = interface->host_pixels.data();
@@ -668,12 +677,12 @@ void rodent_gpu_get_tmp_buffer(int32_t dev, int32_t** buf, int32_t size) {
 
 void rodent_gpu_get_first_primary_stream(int32_t dev, PrimaryStream* primary, int32_t size) {
     auto& array = interface->gpu_first_primary_stream(dev, size);
-    get_primary_stream(*primary, array.data(), array.size() / 20);
+    get_primary_stream(*primary, array.data(), array.size() / 26);
 }
 
 void rodent_gpu_get_second_primary_stream(int32_t dev, PrimaryStream* primary, int32_t size) {
     auto& array = interface->gpu_second_primary_stream(dev, size);
-    get_primary_stream(*primary, array.data(), array.size() / 20);
+    get_primary_stream(*primary, array.data(), array.size() / 26);
 }
 
 void rodent_gpu_get_secondary_stream(int32_t dev, SecondaryStream* secondary, int32_t size) {

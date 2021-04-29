@@ -482,7 +482,6 @@ fn @cpu_trace( scene: Scene
                 for i in range(0, secondary.size) {
                     if secondary.prim_id(i) < 0 {
                         let j = secondary.rays.id(i);
-                        // TODO: accumulate nrm, alb
                         // normal and albedo don't need secondary rays, therefore their secondary ray contrib is black (0,0,0)
                         accumulate(j,
                             make_color(

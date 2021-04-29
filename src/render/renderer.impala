@@ -126,11 +126,12 @@ fn @make_path_tracing_renderer(max_path_len: i32, spp: i32)-> Renderer {
             let mut normal = black;
             if (is_black(state.normal)) {
                 if(!mat.bsdf.is_specular) {
-                    state.albedo = mat.bsdf.albedo();
                     state.normal = vec3_to_color(vec3_add(vec3_mulf(surf.face_normal, 0.5f), make_vec3(0.5f, 0.5f, 0.5f)));
 
                     if(mat.is_emissive) {
                         state.albedo = color_mul(state.albedo, mat.emission(surf.face_normal).intensity);   
+                    } else {
+                        state.albedo = mat.bsdf.albedo();
                     }
 
                     albedo = state.albedo;
@@ -144,9 +145,6 @@ fn @make_path_tracing_renderer(max_path_len: i32, spp: i32)-> Renderer {
                 let next_mis = state.mis * hit.distance * hit.distance / vec3_dot(out_dir, surf.local.col(2));
                 let mis = 1.0f / (1.0f + next_mis * pdf_lightpick * emit.pdf_area);
                 contrib = color_mulf(color_mul(state.contrib, emit.intensity), mis);
-                // TODO: Look at this!
-                //albedo = color_mulf(color_mul(state.albedo, emit.intensity), mis);
-                //state.albedo = albedo;
             }
             accumulate(contrib, albedo, normal)
         }
