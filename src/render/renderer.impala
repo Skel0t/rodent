@@ -127,11 +127,10 @@ fn @make_path_tracing_renderer(max_path_len: i32, spp: i32)-> Renderer {
             if (is_black(state.normal)) {
                 if(!mat.bsdf.is_specular) {
                     state.normal = vec3_to_color(vec3_add(vec3_mulf(surf.face_normal, 0.5f), make_vec3(0.5f, 0.5f, 0.5f)));
+                    state.albedo = mat.bsdf.albedo();
 
                     if(mat.is_emissive) {
                         state.albedo = color_mul(state.albedo, mat.emission(surf.face_normal).intensity);   
-                    } else {
-                        state.albedo = mat.bsdf.albedo();
                     }
 
                     albedo = state.albedo;
