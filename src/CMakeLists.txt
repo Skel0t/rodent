@@ -87,7 +87,7 @@ find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 find_package(TBB REQUIRED)
 find_package(LZ4 REQUIRED)
-find_package(Oidn REQUIRED)
+find_package(OpenImageDenoise REQUIRED)
 
 add_executable(converter ${CONVERTER_SRCS})
 target_include_directories(converter PUBLIC ${LZ4_INCLUDE_DIR})
