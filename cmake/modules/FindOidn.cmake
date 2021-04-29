@@ -119,4 +119,4 @@ ENDFOREACH()
 
 UNSET(_openimagedenoise_SEARCH_DIRS)
 UNSET(_openimagedenoise_FIND_COMPONENTS)
-UNSET(_openimagedenoise_LIBRARIES)
+# UNSET(_openimagedenoise_LIBRARIES)

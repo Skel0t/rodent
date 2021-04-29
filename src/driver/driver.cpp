@@ -138,13 +138,13 @@ static void update_texture(uint32_t* buf, SDL_Texture* texture, size_t width, si
 }
 #endif
 
-static void save_image(const std::string& out_file, size_t width, size_t height, uint32_t iter) {
+static void save_image(const std::string& out_file, size_t width, size_t height, uint32_t iter, float* data) {
     ImageRgba32 img;
     img.width = width;
     img.height = height;
     img.pixels.reset(new uint8_t[width * height * 4]);
 
-    auto film = get_pixels();
+    auto film = data;
     auto inv_iter = 1.0f / iter;
     auto inv_gamma = 1.0f / 2.2f;
     for (size_t y = 0; y < height; ++y) {
@@ -164,86 +164,25 @@ static void save_image(const std::string& out_file, size_t width, size_t height,
         error("Failed to save PNG file '", out_file, "'");
 }
 
-static void save_albedo(const std::string& out_file, size_t width, size_t height, uint32_t iter) {
+static void save_denoised(const std::string& out_file, size_t width, size_t height, float* data) {
     ImageRgba32 img;
     img.width = width;
     img.height = height;
     img.pixels.reset(new uint8_t[width * height * 4]);
 
-    auto film = get_alb_pixels();
-    auto inv_iter = 1.0f / iter;
-    auto inv_gamma = 1.0f / 2.2f;
+    auto film = data;
     for (size_t y = 0; y < height; ++y) {
         for (size_t x = 0; x < width; ++x) {
             auto r = film[(y * width + x) * 3 + 0];
             auto g = film[(y * width + x) * 3 + 1];
             auto b = film[(y * width + x) * 3 + 2];
 
-            img.pixels[4 * (y * width + x) + 0] = clamp(std::pow(r * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
-            img.pixels[4 * (y * width + x) + 1] = clamp(std::pow(g * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
-            img.pixels[4 * (y * width + x) + 2] = clamp(std::pow(b * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
+            img.pixels[4 * (y * width + x) + 0] = r * 255.0f;
+            img.pixels[4 * (y * width + x) + 1] = g * 255.0f;
+            img.pixels[4 * (y * width + x) + 2] = b * 255.0f;
             img.pixels[4 * (y * width + x) + 3] = 255;
         }
     }
-
-    if (!save_png(out_file, img))
-        error("Failed to save PNG file '", out_file, "'");
-}
-
-static void save_normal(const std::string& out_file, size_t width, size_t height, uint32_t iter) {
-    ImageRgba32 img;
-    img.width = width;
-    img.height = height;
-    img.pixels.reset(new uint8_t[width * height * 4]);
-
-    auto film = get_nrm_pixels();
-    auto inv_iter = 1.0f / iter;
-    auto inv_gamma = 1.0f / 2.2f;
-    for (size_t y = 0; y < height; ++y) {
-        for (size_t x = 0; x < width; ++x) {
-            auto r = film[(y * width + x) * 3 + 0];
-            auto g = film[(y * width + x) * 3 + 1];
-            auto b = film[(y * width + x) * 3 + 2];
-
-            img.pixels[4 * (y * width + x) + 0] = clamp(std::pow(r * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
-            img.pixels[4 * (y * width + x) + 1] = clamp(std::pow(g * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
-            img.pixels[4 * (y * width + x) + 2] = clamp(std::pow(b * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
-            img.pixels[4 * (y * width + x) + 3] = 255;
-        }
-    }
-
-    if (!save_png(out_file, img))
-        error("Failed to save PNG file '", out_file, "'");
-}
-
-static void save_denoised(const std::string& out_file, size_t width, size_t height, uint32_t iter) {
-    // Denoise:
-    float* outputPtr = (float*)malloc(width * height * 3 * sizeof(float));
-    denoise(get_pixels(), get_alb_pixels(), get_nrm_pixels(), outputPtr, width, height);
-    
-    // Save the denoised image:
-    ImageRgba32 img;
-    img.width = width;
-    img.height = height;
-    img.pixels.reset(new uint8_t[width * height * 4]);
-
-    auto film = outputPtr;
-    auto inv_iter = 1.0f / iter;
-    auto inv_gamma = 1.0f / 2.2f;
-    for (size_t y = 0; y < height; ++y) {
-        for (size_t x = 0; x < width; ++x) {
-            auto r = film[(y * width + x) * 3 + 0];
-            auto g = film[(y * width + x) * 3 + 1];
-            auto b = film[(y * width + x) * 3 + 2];
-
-            img.pixels[4 * (y * width + x) + 0] = clamp(std::pow(r * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
-            img.pixels[4 * (y * width + x) + 1] = clamp(std::pow(g * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
-            img.pixels[4 * (y * width + x) + 2] = clamp(std::pow(b * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
-            img.pixels[4 * (y * width + x) + 3] = 255;
-        }
-    }
-
-    free(outputPtr);
 
     if (!save_png(out_file, img))
         error("Failed to save PNG file '", out_file, "'");
@@ -426,13 +365,18 @@ int main(int argc, char** argv) {
 #endif
 
     if (out_file != "") {
-        save_image(out_file, width, height, iter);
+        save_image(out_file, width, height, iter, get_pixels());
         if(aux) {
-            save_albedo("albedo.png", width, height, iter);
-            save_normal("normal.png", width, height, iter);
+            save_image("albedo.png", width, height, iter, get_alb_pixels());
+            save_image("normal.png", width, height, iter, get_nrm_pixels());
+            info("Saved auxiliary feature images to albedo.png and normal.png");
         }
         if(oidn) {
-            save_denoised("denoised.png", width, height, iter);
+            float* outputPtr = (float*)malloc(width * height * 3 * sizeof(float));
+            denoise(get_pixels(), get_alb_pixels(), get_nrm_pixels(), outputPtr, width, height, iter);
+            save_denoised("denoised.png", width, height, outputPtr);
+            free(outputPtr);
+            info("Denoising with OIDN done! Saved to denoised.png");
         }
         info("Image saved to '", out_file, "'");
     }
