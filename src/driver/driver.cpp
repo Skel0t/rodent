@@ -118,6 +118,63 @@ static bool handle_events(uint32_t& iter, Camera& cam) {
     return false;
 }
 
+// gamma corrects the RGB image cointained in data and divides the colors by iter (in place)
+static void gamma_correct(size_t width, size_t height, uint32_t iter, float* data, bool doGamma) {
+    auto inv_iter = 1.0f / iter;
+    auto inv_gamma = doGamma ? 1.0f / 2.2f : 1.0f;
+
+    for (size_t y = 0; y < height; ++y) {
+        for (size_t x = 0; x < width; ++x) {
+            auto idx = (y * width + x);
+            auto r = data[idx * 3 + 0];
+            auto g = data[idx * 3 + 1];
+            auto b = data[idx * 3 + 2];
+
+            data[idx * 3 + 0] = clamp(std::pow(r * inv_iter, inv_gamma), 0.0f, 1.0f);
+            data[idx * 3 + 1] = clamp(std::pow(g * inv_iter, inv_gamma), 0.0f, 1.0f);
+            data[idx * 3 + 2] = clamp(std::pow(b * inv_iter, inv_gamma), 0.0f, 1.0f);
+        }
+    }
+}
+
+static void update_texture_denoised(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, uint32_t iter) {    
+    float* pix = (float*) malloc(width * height * 3 * sizeof(float));
+    float* alb = (float*) malloc(width * height * 3 * sizeof(float));
+    float* nrm = (float*) malloc(width * height * 3 * sizeof(float));
+
+    std::memcpy(pix, get_pixels(), width*height*3*sizeof(float));
+    std::memcpy(alb, get_alb_pixels(), width*height*3*sizeof(float));
+    std::memcpy(nrm, get_nrm_pixels(), width*height*3*sizeof(float));
+    
+    gamma_correct(width, height, iter, pix, true); 
+    gamma_correct(width, height, iter, alb, true);
+    gamma_correct(width, height, iter, nrm, false);
+
+    float* outputPtr = (float*) malloc(width * height * 3 * sizeof(float));
+    
+    denoise(pix, alb, nrm, outputPtr, width, height);
+
+    auto inv_iter = 1.0f / iter;
+    for (size_t y = 0; y < height; ++y) {
+        for (size_t x = 0; x < width; ++x) {
+            auto r = outputPtr[(y * width + x) * 3 + 0];
+            auto g = outputPtr[(y * width + x) * 3 + 1];
+            auto b = outputPtr[(y * width + x) * 3 + 2];
+
+            buf[y * width + x] =
+                (uint32_t(r * 255.0f) << 16) |
+                (uint32_t(g * 255.0f) << 8)  |
+                 uint32_t(b * 255.0f);
+        }
+    }
+    SDL_UpdateTexture(texture, nullptr, buf, width * sizeof(uint32_t));
+
+    free(outputPtr);
+    free(pix);
+    free(nrm);
+    free(alb);
+}
+
 static void update_texture(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, uint32_t iter) {
     auto film = get_pixels();
     auto inv_iter = 1.0f / iter;
@@ -137,25 +194,6 @@ static void update_texture(uint32_t* buf, SDL_Texture* texture, size_t width, si
     SDL_UpdateTexture(texture, nullptr, buf, width * sizeof(uint32_t));
 }
 #endif
-
-// gamma corrects the RGB image cointained in data and divides the colors by iter (in place)
-static void gamma_correct(size_t width, size_t height, uint32_t iter, float* data, bool doGamma) {
-    auto inv_iter = 1.0f / iter;
-    auto inv_gamma = doGamma ? 1.0f / 2.2f : 1.0f;
-
-    for (size_t y = 0; y < height; ++y) {
-        for (size_t x = 0; x < width; ++x) {
-            auto idx = (y * width + x);
-            auto r = data[idx * 3 + 0];
-            auto g = data[idx * 3 + 1];
-            auto b = data[idx * 3 + 2];
-
-            data[idx * 3 + 0] = clamp(std::pow(r * inv_iter, inv_gamma), 0.0f, 1.0f);
-            data[idx * 3 + 1] = clamp(std::pow(g * inv_iter, inv_gamma), 0.0f, 1.0f);
-            data[idx * 3 + 2] = clamp(std::pow(b * inv_iter, inv_gamma), 0.0f, 1.0f);
-        }
-    }
-}
 
 // Saves the RGB image (colors in [0;1]) contained in data
 static void save_image(const std::string& out_file, size_t width, size_t height, float* data) {
@@ -343,7 +381,8 @@ int main(int argc, char** argv) {
         }
 
 #ifndef DISABLE_GUI
-        update_texture(buf.get(), texture, width, height, iter);
+        if(oidn) update_texture_denoised(buf.get(), texture, width, height, iter);
+        else update_texture(buf.get(), texture, width, height, iter);
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
