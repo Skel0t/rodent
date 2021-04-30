@@ -14,7 +14,10 @@
 #include "float3.h"
 #include "common.h"
 #include "image.h"
+
+#ifdef OIDN
 #include "denoiser.h"
+#endif
 
 #if defined(__x86_64__) || defined(__amd64__) || defined(_M_X64)
 #include <x86intrin.h>
@@ -137,6 +140,7 @@ static void gamma_correct(size_t width, size_t height, uint32_t iter, float* dat
     }
 }
 
+#ifdef OIDN
 static void update_texture_denoised(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, uint32_t iter) {    
     float* pix = (float*) malloc(width * height * 3 * sizeof(float));
     float* alb = (float*) malloc(width * height * 3 * sizeof(float));
@@ -174,6 +178,7 @@ static void update_texture_denoised(uint32_t* buf, SDL_Texture* texture, size_t 
     free(nrm);
     free(alb);
 }
+#endif
 
 static void update_texture(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, uint32_t iter) {
     auto film = get_pixels();
@@ -281,7 +286,11 @@ int main(int argc, char** argv) {
                 check_arg(argc, argv, i, 1);
                 out_file = argv[++i];
             } else if (!strcmp(argv[i], "--oidn")) {
-                oidn = true;
+#ifdef OIDN
+                    oidn = true;
+#else
+                    error("IntelOpenImageDenoise support not activated");
+#endif
             } else if (!strcmp(argv[i], "--aux")) {
                 aux = true;
             } else if (!strcmp(argv[i], "--help")) {
@@ -381,8 +390,12 @@ int main(int argc, char** argv) {
         }
 
 #ifndef DISABLE_GUI
+# ifdef OIDN
         if(oidn) update_texture_denoised(buf.get(), texture, width, height, iter);
         else update_texture(buf.get(), texture, width, height, iter);
+# else 
+        update_texture(buf.get(), texture, width, height, iter);
+# endif
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
@@ -408,14 +421,16 @@ int main(int argc, char** argv) {
             save_image("normal.png", width, height, get_nrm_pixels());
             info("Saved auxiliary feature images to albedo.png and normal.png");
         }
-        if(oidn) {
-            float* outputPtr = (float*) malloc(width * height * 3 * sizeof(float));
-            denoise(get_pixels(), get_alb_pixels(), get_nrm_pixels(), outputPtr, width, height);
-            save_image("denoised.png", width, height, outputPtr);
+        #ifdef OIDN
+            if(oidn) {
+                float* outputPtr = (float*) malloc(width * height * 3 * sizeof(float));
+                denoise(get_pixels(), get_alb_pixels(), get_nrm_pixels(), outputPtr, width, height);
+                save_image("denoised.png", width, height, outputPtr);
 
-            free(outputPtr);
-            info("Denoising with OIDN done! Saved to denoised.png");
-        }
+                free(outputPtr);
+                info("Denoising with OIDN done! Saved to denoised.png");
+            }
+        #endif
         info("Image saved to '", out_file, "'");
     }
 
