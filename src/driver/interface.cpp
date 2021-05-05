@@ -614,7 +614,6 @@ void rodent_get_film_data(int32_t dev, float** pixels, float** alb_pixels, float
         *pixels = device.film_pixels.data();
         *alb_pixels = device.d_alb_pixels.data();
         *nrm_pixels = device.d_nrm_pixels.data();
-        // TODO: If not on CPU, also allocate alb, nrm pixels memory
     } else {
         *pixels = interface->host_pixels.data();
         *alb_pixels = interface->alb_pixels.data();

@@ -37,7 +37,6 @@ inline void get_ray_stream(RayStream& rays, float* ptr, size_t capacity) {
     rays.tmax  = ptr + 8 * capacity;
 }
 
-// TODO: memory alloc until 25*capacity
 inline void get_primary_stream(PrimaryStream& primary, float* ptr, size_t capacity) {
     get_ray_stream(primary.rays, ptr, capacity);
     primary.geom_id   = (int*)ptr + 9 * capacity;

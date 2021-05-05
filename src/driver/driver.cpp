@@ -141,8 +141,7 @@ static void gamma_correct(size_t width, size_t height, uint32_t iter, float* dat
 }
 
 #ifdef OIDN
-static void update_texture_raw(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, uint32_t iter, float* outputPtr) {
-    auto inv_iter = 1.0f / iter;
+static void update_texture_raw(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, float* outputPtr) {
     for (size_t y = 0; y < height; ++y) {
         for (size_t x = 0; x < width; ++x) {
             auto r = outputPtr[(y * width + x) * 3 + 0];
@@ -331,11 +330,13 @@ int main(int argc, char** argv) {
 
 #ifndef DISABLE_GUI
     float *pix, *alb, *nrm, *outputPtr;
+    oidn::FilterRef filter;
     if (oidn) {
         pix = (float*) malloc(width * height * 3 * sizeof(float));
         alb = (float*) malloc(width * height * 3 * sizeof(float));
         nrm = (float*) malloc(width * height * 3 * sizeof(float));
         outputPtr = (float*) malloc(width * height * 3 * sizeof(float));
+        filter = create_filter(pix, alb, nrm, outputPtr, width, height);
     }
 #endif
     while (!done) {
@@ -356,6 +357,19 @@ int main(int argc, char** argv) {
 
         auto ticks = std::chrono::high_resolution_clock::now();
         render(&settings, iter++);
+#ifdef OIDN
+        if (oidn) {
+            std::memcpy(pix, get_pixels(), width*height*3*sizeof(float));
+            std::memcpy(alb, get_alb_pixels(), width*height*3*sizeof(float));
+            std::memcpy(nrm, get_nrm_pixels(), width*height*3*sizeof(float));
+            
+            gamma_correct(width, height, iter, pix, true); 
+            gamma_correct(width, height, iter, alb, true);
+            gamma_correct(width, height, iter, nrm, false);
+
+            filter.execute();
+        }
+#endif
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
 
         if (bench_iter != 0) {
@@ -381,17 +395,7 @@ int main(int argc, char** argv) {
 #ifndef DISABLE_GUI
 # ifdef OIDN
         if(oidn) {
-            std::memcpy(pix, get_pixels(), width*height*3*sizeof(float));
-            std::memcpy(alb, get_alb_pixels(), width*height*3*sizeof(float));
-            std::memcpy(nrm, get_nrm_pixels(), width*height*3*sizeof(float));
-            
-            gamma_correct(width, height, iter, pix, true); 
-            gamma_correct(width, height, iter, alb, true);
-            gamma_correct(width, height, iter, nrm, false);
-
-            denoise(pix, alb, nrm, outputPtr, width, height);
-
-            update_texture_raw(buf.get(), texture, width, height, iter, outputPtr); 
+            update_texture_raw(buf.get(), texture, width, height, outputPtr); 
         } else {
             update_texture(buf.get(), texture, width, height, iter); 
         }
