@@ -141,23 +141,7 @@ static void gamma_correct(size_t width, size_t height, uint32_t iter, float* dat
 }
 
 #ifdef OIDN
-static void update_texture_denoised(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, uint32_t iter) {    
-    float* pix = (float*) malloc(width * height * 3 * sizeof(float));
-    float* alb = (float*) malloc(width * height * 3 * sizeof(float));
-    float* nrm = (float*) malloc(width * height * 3 * sizeof(float));
-
-    std::memcpy(pix, get_pixels(), width*height*3*sizeof(float));
-    std::memcpy(alb, get_alb_pixels(), width*height*3*sizeof(float));
-    std::memcpy(nrm, get_nrm_pixels(), width*height*3*sizeof(float));
-    
-    gamma_correct(width, height, iter, pix, true); 
-    gamma_correct(width, height, iter, alb, true);
-    gamma_correct(width, height, iter, nrm, false);
-
-    float* outputPtr = (float*) malloc(width * height * 3 * sizeof(float));
-    
-    denoise(pix, alb, nrm, outputPtr, width, height);
-
+static void update_texture_raw(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, uint32_t iter, float* outputPtr) {
     auto inv_iter = 1.0f / iter;
     for (size_t y = 0; y < height; ++y) {
         for (size_t x = 0; x < width; ++x) {
@@ -172,11 +156,6 @@ static void update_texture_denoised(uint32_t* buf, SDL_Texture* texture, size_t 
         }
     }
     SDL_UpdateTexture(texture, nullptr, buf, width * sizeof(uint32_t));
-
-    free(outputPtr);
-    free(pix);
-    free(nrm);
-    free(alb);
 }
 #endif
 
@@ -349,6 +328,16 @@ int main(int argc, char** argv) {
     uint32_t frames = 0;
     uint32_t iter = 0;
     std::vector<double> samples_sec;
+
+#ifndef DISABLE_GUI
+    float *pix, *alb, *nrm, *outputPtr;
+    if (oidn) {
+        pix = (float*) malloc(width * height * 3 * sizeof(float));
+        alb = (float*) malloc(width * height * 3 * sizeof(float));
+        nrm = (float*) malloc(width * height * 3 * sizeof(float));
+        outputPtr = (float*) malloc(width * height * 3 * sizeof(float));
+    }
+#endif
     while (!done) {
 #ifndef DISABLE_GUI
         done = handle_events(iter, cam);
@@ -391,8 +380,21 @@ int main(int argc, char** argv) {
 
 #ifndef DISABLE_GUI
 # ifdef OIDN
-        if(oidn) update_texture_denoised(buf.get(), texture, width, height, iter);
-        else update_texture(buf.get(), texture, width, height, iter);
+        if(oidn) {
+            std::memcpy(pix, get_pixels(), width*height*3*sizeof(float));
+            std::memcpy(alb, get_alb_pixels(), width*height*3*sizeof(float));
+            std::memcpy(nrm, get_nrm_pixels(), width*height*3*sizeof(float));
+            
+            gamma_correct(width, height, iter, pix, true); 
+            gamma_correct(width, height, iter, alb, true);
+            gamma_correct(width, height, iter, nrm, false);
+
+            denoise(pix, alb, nrm, outputPtr, width, height);
+
+            update_texture_raw(buf.get(), texture, width, height, iter, outputPtr); 
+        } else {
+            update_texture(buf.get(), texture, width, height, iter); 
+        }
 # else 
         update_texture(buf.get(), texture, width, height, iter);
 # endif
@@ -403,6 +405,13 @@ int main(int argc, char** argv) {
     }
 
 #ifndef DISABLE_GUI
+    if (oidn) {
+        free(outputPtr);
+        free(pix);
+        free(nrm);
+        free(alb);
+    }
+
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

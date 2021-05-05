@@ -65,6 +65,7 @@ newmtl shortBox
   Ka 0.725 0.71 0.68 # White
   Kd 0.725 0.71 0.68
   Ks 0.8 0.8 0.8
+  Tf 0.5 0.5 0.5
   Ke 0 0 0
   illum 7
 
