@@ -329,6 +329,7 @@ int main(int argc, char** argv) {
     std::vector<double> samples_sec;
 
 #ifndef DISABLE_GUI
+#ifdef OIDN
     float *pix, *alb, *nrm, *outputPtr;
     oidn::FilterRef filter;
     if (oidn) {
@@ -338,6 +339,7 @@ int main(int argc, char** argv) {
         outputPtr = (float*) malloc(width * height * 3 * sizeof(float));
         filter = create_filter(pix, alb, nrm, outputPtr, width, height);
     }
+#endif
 #endif
     while (!done) {
 #ifndef DISABLE_GUI
@@ -362,8 +364,8 @@ int main(int argc, char** argv) {
             std::memcpy(pix, get_pixels(), width*height*3*sizeof(float));
             std::memcpy(alb, get_alb_pixels(), width*height*3*sizeof(float));
             std::memcpy(nrm, get_nrm_pixels(), width*height*3*sizeof(float));
-            
-            gamma_correct(width, height, iter, pix, true); 
+
+            gamma_correct(width, height, iter, pix, true);
             gamma_correct(width, height, iter, alb, true);
             gamma_correct(width, height, iter, nrm, false);
 
@@ -393,15 +395,15 @@ int main(int argc, char** argv) {
         }
 
 #ifndef DISABLE_GUI
-# ifdef OIDN
+#ifdef OIDN
         if(oidn) {
-            update_texture_raw(buf.get(), texture, width, height, outputPtr); 
+            update_texture_raw(buf.get(), texture, width, height, outputPtr);
         } else {
-            update_texture(buf.get(), texture, width, height, iter); 
+            update_texture(buf.get(), texture, width, height, iter);
         }
-# else 
+#else
         update_texture(buf.get(), texture, width, height, iter);
-# endif
+#endif
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
@@ -409,12 +411,14 @@ int main(int argc, char** argv) {
     }
 
 #ifndef DISABLE_GUI
+#ifdef OIDN
     if (oidn) {
         free(outputPtr);
         free(pix);
         free(nrm);
         free(alb);
     }
+#endif
 
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
