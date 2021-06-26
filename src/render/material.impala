@@ -32,7 +32,8 @@ struct Bsdf {
     // Samples a direction
     sample: fn (&mut RndState, Vec3, bool) -> BsdfSample,
     // Returns true if the material is purely specular
-    is_specular: bool
+    is_specular: bool,
+    albedo: fn () -> Color
 }
 
 fn @fresnel_factor(k: f32, cos_i: f32, cos_t: f32) -> f32 {
@@ -72,7 +73,8 @@ fn @make_black_bsdf() = Bsdf {
     eval =   @ |_, _| black,
     pdf  =   @ |_, _| 0,
     sample = @ |_, out_dir, _| BsdfSample { in_dir = out_dir, pdf = 1, cos = 1, color = black },
-    is_specular = false
+    is_specular = false,
+    albedo = @ || black
 };
 
 // Creates a purely diffuse BSDF
@@ -88,7 +90,8 @@ fn @make_diffuse_bsdf(math: Intrinsics, surf: SurfaceElement, kd: Color) = Bsdf 
         let color = color_mulf(kd, 1 / flt_pi);
         make_bsdf_sample(surf, mat3x3_mul(surf.local, sample.dir), sample.pdf, sample.dir.z, color, false)
     },
-    is_specular = false
+    is_specular = false,
+    albedo = @ || color_mulf(kd, 1.0 / flt_pi)
 };
 
 // Creates a physically-correct Phong BSDF
@@ -109,7 +112,8 @@ fn @make_phong_bsdf(math: Intrinsics, surf: SurfaceElement, ks: Color, ns: f32) 
         let color = color_mulf(ks, sample.pdf * (ns + 2) / (ns + 1));
         make_bsdf_sample(surf, in_dir, sample.pdf, cos, color, false)
     },
-    is_specular = false
+    is_specular = false,
+    albedo = @ || color_mulf(ks, 1.0 / flt_pi)
 };
 
 // Creates a perfect mirror BSDF
@@ -119,7 +123,8 @@ fn @make_mirror_bsdf(_math: Intrinsics, surf: SurfaceElement, ks: Color) = Bsdf 
     sample = @ |_, out_dir, _| {
         make_bsdf_sample(surf, vec3_reflect(out_dir, surf.local.col(2)), 1, 1, ks, false)
     },
-    is_specular = true
+    is_specular = true,
+    albedo = @ || white
 };
 
 // Creates a perfect glass BSDF
@@ -145,7 +150,8 @@ fn @make_glass_bsdf(math: Intrinsics, surf: SurfaceElement, n1: f32, n2: f32, ks
         // Reflection
         make_bsdf_sample(surf, vec3_reflect(out_dir, n), 1, 1, ks, false)
     },
-    is_specular = true
+    is_specular = true,
+    albedo = @ || white
 };
 
 // Creates a BSDF that interpolates between two other BSDFs
@@ -172,5 +178,6 @@ fn @make_mix_bsdf(mat1: Bsdf, mat2: Bsdf, k: f32) = Bsdf {
         };
         BsdfSample { in_dir = sample.in_dir, pdf = pdf, cos = sample.cos, color = color }
     },
-    is_specular = mat1.is_specular & mat2.is_specular
+    is_specular = mat1.is_specular & mat2.is_specular,
+    albedo = @ || color_lerp(mat1.albedo(), mat2.albedo(), k)
 };

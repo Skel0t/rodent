@@ -1,6 +1,6 @@
-# Auto generated interfaces
-tools/common/traversal.h
-tools/common/shading.h
+# Local directories
+build/
+.vscode/
 
 # Compiled Object files
 *.slo

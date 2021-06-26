@@ -1,4 +1,4 @@
-set(CUDA_HOST_COMPILER ${CMAKE_C_COMPILER} CACHE FILEPATH "Compiler to use with CUDA") 
+set(CUDA_HOST_COMPILER ${CMAKE_C_COMPILER} CACHE FILEPATH "Compiler to use with CUDA")
 cuda_compile(AILA_TRAVERSAL
     CudaTracerKernels.hpp
     kepler_dynamic_fetch.cu

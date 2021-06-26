@@ -73,6 +73,12 @@ fn cpu_sort_primary(primary: &PrimaryStream, ray_begins: &mut [i32], ray_ends: &
                 swap(&mut primary.contrib_r(k), &mut primary.contrib_r(j));
                 swap(&mut primary.contrib_g(k), &mut primary.contrib_g(j));
                 swap(&mut primary.contrib_b(k), &mut primary.contrib_b(j));
+                swap(&mut primary.albedo_r(k),  &mut primary.albedo_r(j));
+                swap(&mut primary.albedo_g(k),  &mut primary.albedo_g(j));
+                swap(&mut primary.albedo_b(k),  &mut primary.albedo_b(j));
+                swap(&mut primary.normal_r(k),  &mut primary.normal_r(j));
+                swap(&mut primary.normal_g(k),  &mut primary.normal_g(j));
+                swap(&mut primary.normal_b(k),  &mut primary.normal_b(j));
                 swap(&mut primary.depth(k),     &mut primary.depth(j));
             } else {
                 j++;
@@ -111,7 +117,7 @@ fn @cpu_compact_primary(primary: &PrimaryStream, vector_width: i32, vector_compa
         let mut k = 0;
         if vector_compact {
             for i in range_step(0, primary.size, vector_width) {
-                vectorize(vector_width, |j| { 
+                vectorize(vector_width, |j| {
                     let id = primary.rays.id(i + j);
                     let mask = (id >= 0) & (i + j < primary.size);
 
@@ -124,6 +130,12 @@ fn @cpu_compact_primary(primary: &PrimaryStream, vector_width: i32, vector_compa
                     primary.contrib_r(k + j) = rv_compact(primary.contrib_r(i + j), mask);
                     primary.contrib_g(k + j) = rv_compact(primary.contrib_g(i + j), mask);
                     primary.contrib_b(k + j) = rv_compact(primary.contrib_b(i + j), mask);
+                    primary.albedo_r(k + j)  = rv_compact(primary.albedo_r(i + j), mask);
+                    primary.albedo_g(k + j)  = rv_compact(primary.albedo_g(i + j), mask);
+                    primary.albedo_b(k + j)  = rv_compact(primary.albedo_b(i + j), mask);
+                    primary.normal_r(k + j)  = rv_compact(primary.normal_r(i + j), mask);
+                    primary.normal_g(k + j)  = rv_compact(primary.normal_g(i + j), mask);
+                    primary.normal_b(k + j)  = rv_compact(primary.normal_b(i + j), mask);
                     primary.depth(k + j)     = bitcast[i32](rv_compact(bitcast[f32](primary.depth(i + j)), mask));
 
                     k += cpu_popcount32(rv_ballot(mask));
@@ -140,10 +152,16 @@ fn @cpu_compact_primary(primary: &PrimaryStream, vector_width: i32, vector_compa
                     primary.contrib_r(k) = primary.contrib_r(i);
                     primary.contrib_g(k) = primary.contrib_g(i);
                     primary.contrib_b(k) = primary.contrib_b(i);
+                    primary.albedo_r(k)  = primary.albedo_r(i);
+                    primary.albedo_g(k)  = primary.albedo_g(i);
+                    primary.albedo_b(k)  = primary.albedo_b(i);
+                    primary.normal_r(k)  = primary.normal_r(i);
+                    primary.normal_g(k)  = primary.normal_g(i);
+                    primary.normal_b(k)  = primary.normal_b(i);
                     primary.depth(k)     = primary.depth(i);
                     k++;
                 }
-            } 
+            }
         }
         k
     }
@@ -183,7 +201,7 @@ fn @cpu_compact_secondary(secondary: &SecondaryStream, vector_width: i32, vector
                     secondary.color_b(k) = secondary.color_b(i);
                     k++;
                 }
-            } 
+            }
 
         }
         k
@@ -268,7 +286,7 @@ fn @cpu_shade( geom_id: i32
              , secondary: &SecondaryStream
              , scene: Scene
              , path_tracer: PathTracer
-             , accumulate: fn (i32, Color) -> ()
+             , accumulate: fn (i32, Color, Color, Color) -> ()
              , begin: i32, end: i32
              , vector_width: i32
              ) -> () {
@@ -292,9 +310,10 @@ fn @cpu_shade( geom_id: i32
 
             // Execute hit point shading, and add the contribution of each lane to the frame buffer
             let on_hit = path_tracer.on_hit;
-            let hit_color = match @on_hit(ray, hit, &mut state, surf, mat) {
-                Option[Color]::Some(color) => color,
-                Option[Color]::None => black
+
+            let (hit_color, alb_color, nrm_color) = match @on_hit(ray, hit, &mut state, surf, mat) {
+                Option[(Color, Color, Color)]::Some((color, albedo, normal)) => (color, albedo, normal),
+                Option[(Color, Color, Color)]::None => (black, black, black)
             };
 
             for lane in unroll(0, vector_width) {
@@ -304,6 +323,16 @@ fn @cpu_shade( geom_id: i32
                         rv_extract(hit_color.r, lane),
                         rv_extract(hit_color.g, lane),
                         rv_extract(hit_color.b, lane)
+                    ),
+                    make_color(
+                        rv_extract(alb_color.r, lane),
+                        rv_extract(alb_color.g, lane),
+                        rv_extract(alb_color.b, lane)
+                    ),
+                    make_color(
+                        rv_extract(nrm_color.r, lane),
+                        rv_extract(nrm_color.g, lane),
+                        rv_extract(nrm_color.b, lane)
                     )
                 );
             }
@@ -339,12 +368,14 @@ fn @cpu_shade( geom_id: i32
     cpu_shade_specialized(primary, secondary, begin, end);
 }
 
-fn @cpu_get_film_data() -> (&mut [f32], i32, i32) {
+fn @cpu_get_film_data() -> (&mut [f32], &mut [f32], &mut [f32], i32, i32) {
     let mut film_pixels : &mut [f32];
+    let mut alb_pixels  : &mut [f32];
+    let mut nrm_pixels  : &mut [f32];
     let mut film_width  : i32;
     let mut film_height : i32;
-    rodent_get_film_data(0, &mut film_pixels, &mut film_width, &mut film_height);
-    (film_pixels, film_width, film_height)
+    rodent_get_film_data(0, &mut film_pixels, &mut alb_pixels, &mut nrm_pixels, &mut film_width, &mut film_height);
+    (film_pixels, alb_pixels, nrm_pixels, film_width, film_height)
 }
 
 fn @cpu_trace( scene: Scene
@@ -358,13 +389,21 @@ fn @cpu_trace( scene: Scene
              , use_embree: bool
              , vector_compact: bool
              ) -> () {
-    let (film_pixels, film_width, film_height) = cpu_get_film_data();
+    let (film_pixels, alb_pixels, nrm_pixels, film_width, film_height) = cpu_get_film_data();
 
-    fn @accumulate(pixel: i32, color: Color) -> () {
+    fn @accumulate(pixel: i32, hit_color: Color, alb_color: Color, nrm_color: Color) -> () {
         let inv = 1 / (spp as f32);
-        film_pixels(pixel * 3 + 0) += color.r * inv;
-        film_pixels(pixel * 3 + 1) += color.g * inv;
-        film_pixels(pixel * 3 + 2) += color.b * inv;
+        film_pixels(pixel * 3 + 0) += hit_color.r * inv;
+        film_pixels(pixel * 3 + 1) += hit_color.g * inv;
+        film_pixels(pixel * 3 + 2) += hit_color.b * inv;
+
+        alb_pixels(pixel * 3 + 0)  += alb_color.r * inv;
+        alb_pixels(pixel * 3 + 1)  += alb_color.g * inv;
+        alb_pixels(pixel * 3 + 2)  += alb_color.b * inv;
+
+        nrm_pixels(pixel * 3 + 0)  += nrm_color.r * inv;
+        nrm_pixels(pixel * 3 + 1)  += nrm_color.g * inv;
+        nrm_pixels(pixel * 3 + 2)  += nrm_color.b * inv;
     }
     let mut primary_counter = 0:i64;
     let mut bounces_counter = 0:i64;
@@ -440,7 +479,9 @@ fn @cpu_trace( scene: Scene
                                 secondary.color_r(i),
                                 secondary.color_g(i),
                                 secondary.color_b(i)
-                            )
+                            ),
+                            black,
+                            black
                         );
                     }
                 }

@@ -7,12 +7,14 @@ struct Atomics {
     add_shared_f32: fn (&mut addrspace(3)f32, f32) -> f32
 }
 
-fn @gpu_get_film_data(dev_id: i32) -> (&mut [f32], i32, i32) {
+fn @gpu_get_film_data(dev_id: i32) -> (&mut [f32], &mut [f32], &mut [f32], i32, i32) {
     let mut film_pixels : &mut [f32];
+    let mut alb_pixels  : &mut [f32];
+    let mut nrm_pixels  : &mut [f32];
     let mut film_width  : i32;
     let mut film_height : i32;
-    rodent_get_film_data(dev_id, &mut film_pixels, &mut film_width, &mut film_height);
-    (film_pixels, film_width, film_height)
+    rodent_get_film_data(dev_id, &mut film_pixels, &mut alb_pixels, &mut nrm_pixels, &mut film_width, &mut film_height);
+    (film_pixels, alb_pixels, nrm_pixels, film_width, film_height)
 }
 
 fn @gpu_traverse_primary(primary: PrimaryStream, acc: Accelerator, intrinsics: Intrinsics, min_max: MinMax, scene: Scene) -> () {
@@ -29,18 +31,36 @@ fn @gpu_traverse_primary(primary: PrimaryStream, acc: Accelerator, intrinsics: I
     );
 }
 
-fn @gpu_accumulate(atomics: Atomics, film_pixels: &mut [f32], pixel: i32, color: Color, spp: i32) -> () {
-    let ptr = &film_pixels(pixel * 3) as &mut [f32];
+fn @gpu_accumulate(atomics: Atomics, film_pixels: &mut [f32], alb_pixels: &mut [f32], nrm_pixels: &mut [f32], pixel: i32, color: Color, alb_color: Color, nrm_color: Color, spp: i32) -> () {
+    let ptr_col = &film_pixels(pixel * 3) as &mut [f32];
+    let ptr_alb = &alb_pixels(pixel * 3) as &mut [f32];
+    let ptr_nrm = &nrm_pixels(pixel * 3) as &mut [f32];
     if ?spp && spp == 1 {
         // If there is only one sample in flight, there is no need for atomics
-        ptr(0) += color.r;
-        ptr(1) += color.g;
-        ptr(2) += color.b;
+        ptr_col(0) += color.r;
+        ptr_col(1) += color.g;
+        ptr_col(2) += color.b;
+
+        ptr_alb(0) += alb_color.r;
+        ptr_alb(1) += alb_color.g;
+        ptr_alb(2) += alb_color.b;
+
+        ptr_nrm(0) += nrm_color.r;
+        ptr_nrm(1) += nrm_color.g;
+        ptr_nrm(2) += nrm_color.b;
     } else {
         let inv = 1 / (spp as f32);
-        atomics.add_global_f32(&mut ptr(0), color.r * inv);
-        atomics.add_global_f32(&mut ptr(1), color.g * inv);
-        atomics.add_global_f32(&mut ptr(2), color.b * inv);
+        atomics.add_global_f32(&mut ptr_col(0), color.r * inv);
+        atomics.add_global_f32(&mut ptr_col(1), color.g * inv);
+        atomics.add_global_f32(&mut ptr_col(2), color.b * inv);
+
+        atomics.add_global_f32(&mut ptr_alb(0), alb_color.r * inv);
+        atomics.add_global_f32(&mut ptr_alb(1), alb_color.g * inv);
+        atomics.add_global_f32(&mut ptr_alb(2), alb_color.b * inv);
+
+        atomics.add_global_f32(&mut ptr_nrm(0), nrm_color.r * inv);
+        atomics.add_global_f32(&mut ptr_nrm(1), nrm_color.g * inv);
+        atomics.add_global_f32(&mut ptr_nrm(2), nrm_color.b * inv);
     }
 }
 
@@ -59,6 +79,8 @@ fn @gpu_traverse_secondary( secondary: SecondaryStream
                           , min_max: MinMax
                           , scene: Scene
                           , film_pixels: &mut [f32]
+                          , alb_pixels:  &mut [f32]
+                          , nrm_pixels:  &mut [f32]
                           , spp: i32
                           ) -> () {
     gpu_exec_1d(acc, secondary.size, 64 /*block_size*/, |work_item| {
@@ -87,7 +109,8 @@ fn @gpu_traverse_secondary( secondary: SecondaryStream
                 secondary.color_g(gid),
                 secondary.color_b(gid)
             );
-            gpu_accumulate(atomics, film_pixels, pixel, color, spp);
+            // No secondary ray accumulation necessary for nrm/albedo -> black and black
+            gpu_accumulate(atomics, film_pixels, alb_pixels, nrm_pixels, pixel, color, black, black, spp);
         }
     });
 }
@@ -97,6 +120,8 @@ fn @gpu_shade( acc: Accelerator
              , scene: Scene
              , path_tracer: PathTracer
              , film_pixels: &mut [f32]
+             , alb_pixels:  &mut [f32]
+             , nrm_pixels:  &mut [f32]
              , spp: i32
              , primary: PrimaryStream
              , secondary: SecondaryStream
@@ -119,7 +144,7 @@ fn @gpu_shade( acc: Accelerator
 
         let on_hit = path_tracer.on_hit;
         match @on_hit(ray, hit, &mut state, surf, mat) {
-            Option[Color]::Some(color) => gpu_accumulate(atomics, film_pixels, pixel, color, spp),
+            Option[(Color, Color, Color)]::Some((color, albedo, normal)) => gpu_accumulate(atomics, film_pixels, alb_pixels, nrm_pixels, pixel, color, albedo, normal, spp),
             _ => ()
         }
 
@@ -177,6 +202,12 @@ fn @copy_primary_ray( primary: PrimaryStream
     other_primary.contrib_r(dst_id)  = primary.contrib_r(src_id);
     other_primary.contrib_g(dst_id)  = primary.contrib_g(src_id);
     other_primary.contrib_b(dst_id)  = primary.contrib_b(src_id);
+    other_primary.albedo_r(dst_id)   = primary.albedo_r(src_id);
+    other_primary.albedo_g(dst_id)   = primary.albedo_g(src_id);
+    other_primary.albedo_b(dst_id)   = primary.albedo_b(src_id);
+    other_primary.normal_r(dst_id)   = primary.normal_r(src_id);
+    other_primary.normal_g(dst_id)   = primary.normal_g(src_id);
+    other_primary.normal_b(dst_id)   = primary.normal_b(src_id);
     other_primary.depth(dst_id)      = primary.depth(src_id);
 }
 
@@ -329,7 +360,7 @@ fn @gpu_streaming_trace( dev_id: i32
                        , path_tracer: PathTracer
                        , spp: i32
                        ) -> () {
-    let (film_pixels, film_width, film_height) = gpu_get_film_data(dev_id);
+    let (film_pixels, alb_pixels, nrm_pixels, film_width, film_height) = gpu_get_film_data(dev_id);
 
     let capacity = 1024 * 1024;
     let mut primary: PrimaryStream;
@@ -365,7 +396,7 @@ fn @gpu_streaming_trace( dev_id: i32
             if first >= last {
                 continue()
             }
-            gpu_shade(acc, atomics, scene, path_tracer, film_pixels, spp, primary, secondary, first, last, geom_id);
+            gpu_shade(acc, atomics, scene, path_tracer, film_pixels, alb_pixels, nrm_pixels, spp, primary, secondary, first, last, geom_id);
             first = last;
         }
         primary.size   = first;
@@ -374,7 +405,7 @@ fn @gpu_streaming_trace( dev_id: i32
 
         if first > 0 {
             // Trace secondary rays
-            gpu_traverse_secondary(secondary, acc, intrinsics, atomics, min_max, scene, film_pixels, spp);
+            gpu_traverse_secondary(secondary, acc, intrinsics, atomics, min_max, scene, film_pixels, alb_pixels, nrm_pixels, spp);
 
             // Compact primary rays
             other_primary.size = gpu_compact_primary(primary, other_primary, dev_id, acc, intrinsics, atomics, gpu_tmp);
@@ -392,7 +423,7 @@ fn @gpu_mega_kernel_trace( dev_id: i32
                          , path_tracer: PathTracer
                          , spp: i32
                          ) -> () {
-    let (film_pixels, film_width, film_height) = gpu_get_film_data(dev_id);
+    let (film_pixels, alb_pixels, nrm_pixels, film_width, film_height) = gpu_get_film_data(dev_id);
 
     // Make tiles of 2^10 = 1024 total samples
     let mut log2_tile_size = (10 - ilog2(spp)) / 2;
@@ -419,7 +450,9 @@ fn @gpu_mega_kernel_trace( dev_id: i32
 
         let mut ray: Ray;
         let mut state: RayState;
-        let mut final_color: Color;
+        let mut final_color:  Color;
+        let mut final_albedo: Color;
+        let mut final_normal: Color;
         let mut pixel = -1;
 
         let pixel_mask = 0x7FFFFFFF;
@@ -427,7 +460,7 @@ fn @gpu_mega_kernel_trace( dev_id: i32
         while true {
             if unlikely(pixel < 0) {
                 if pixel != -1 {
-                    gpu_accumulate(atomics, film_pixels, pixel & pixel_mask, final_color, spp);
+                    gpu_accumulate(atomics, film_pixels, alb_pixels, nrm_pixels, pixel & pixel_mask, final_color, final_albedo, final_normal, spp);
                 }
 
                 let id = atomics.add_shared_i32(counter, 1);
@@ -440,7 +473,9 @@ fn @gpu_mega_kernel_trace( dev_id: i32
                 let y = tile_y + in_tile_y;
                 let on_emit = path_tracer.on_emit;
                 let (init_ray, init_state) = @on_emit(sample_id, x, y, film_width, film_height);
-                final_color = make_color(0, 0, 0);
+                final_color  = make_color(0, 0, 0);
+                final_albedo = make_color(0, 0, 0);
+                final_normal = make_color(0, 0, 0);
                 pixel = y * film_width + x;
                 ray   = init_ray;
                 state = init_state;
@@ -463,8 +498,10 @@ fn @gpu_mega_kernel_trace( dev_id: i32
 
                     let on_hit = path_tracer.on_hit;
                     match @on_hit(ray, hit, &mut state, surf, mat) {
-                        Option[Color]::Some(color) => {
-                            final_color = color_add(final_color, color);
+                        Option[(Color, Color, Color)]::Some((color, albedo, normal)) => {
+                            final_color  = color_add(final_color,  color);
+                            final_albedo = color_add(final_albedo, albedo);
+                            final_normal = color_add(final_normal, normal);
                         },
                         _ => ()
                     }

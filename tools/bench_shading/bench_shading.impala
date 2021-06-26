@@ -94,6 +94,8 @@ fn cpu_bench_shading( primary_in: &PrimaryStream
             let new_state = make_ray_state(
                 state.rnd,
                 contrib,
+                black,
+                black,
                 mis,
                 state.depth + 1
             );

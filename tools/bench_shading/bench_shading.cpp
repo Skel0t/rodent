@@ -49,7 +49,13 @@ inline void get_primary_stream(PrimaryStream& primary, float* ptr, size_t capaci
     primary.contrib_r = ptr + 16 * capacity;
     primary.contrib_g = ptr + 17 * capacity;
     primary.contrib_b = ptr + 18 * capacity;
-    primary.depth     = (int*)ptr + 19 * capacity;
+    primary.albedo_r = ptr + 19 * capacity;
+    primary.albedo_g = ptr + 20 * capacity;
+    primary.albedo_b = ptr + 21 * capacity;
+    primary.normal_r = ptr + 22 * capacity;
+    primary.normal_g = ptr + 23 * capacity;
+    primary.normal_b = ptr + 24 * capacity;
+    primary.depth     = (int*)ptr + 25 * capacity;
     primary.size = 0;
 }
 
@@ -112,8 +118,8 @@ int main(int argc, char** argv) {
     // Generate streams
     PrimaryStream primary_in, primary_out;
     size_t num_rays = 4096;
-    anydsl::Array<float> primary_in_data (20 * num_rays);
-    anydsl::Array<float> primary_out_data(20 * num_rays);
+    anydsl::Array<float> primary_in_data (26 * num_rays);
+    anydsl::Array<float> primary_out_data(26 * num_rays);
     get_primary_stream(primary_in,  primary_in_data.data(), num_rays);
     get_primary_stream(primary_out, primary_out_data.data(), num_rays);
 
@@ -165,6 +171,12 @@ int main(int argc, char** argv) {
             primary_in.contrib_r[cur + i] = 1.0f;
             primary_in.contrib_g[cur + i] = 1.0f;
             primary_in.contrib_b[cur + i] = 1.0f;
+            primary_in.albedo_r[cur + i]  = 1.0f;
+            primary_in.albedo_g[cur + i]  = 1.0f;
+            primary_in.albedo_b[cur + i]  = 1.0f;
+            primary_in.normal_r[cur + i]  = 1.0f;
+            primary_in.normal_g[cur + i]  = 1.0f;
+            primary_in.normal_b[cur + i]  = 1.0f;
             primary_in.depth[cur + i] = 0;
         }
     }
@@ -193,6 +205,12 @@ int main(int argc, char** argv) {
             primary_out.contrib_r[i]  = primary_in.contrib_r[ids[i]];
             primary_out.contrib_g[i]  = primary_in.contrib_g[ids[i]];
             primary_out.contrib_b[i]  = primary_in.contrib_b[ids[i]];
+            primary_out.albedo_r[i]   = primary_in.albedo_r[ids[i]];
+            primary_out.albedo_g[i]   = primary_in.albedo_g[ids[i]];
+            primary_out.albedo_b[i]   = primary_in.albedo_b[ids[i]];
+            primary_out.normal_r[i]   = primary_in.normal_r[ids[i]];
+            primary_out.normal_g[i]   = primary_in.normal_g[ids[i]];
+            primary_out.normal_b[i]   = primary_in.normal_b[ids[i]];
             primary_out.depth[i]      = primary_in.depth[ids[i]];
         }
         anydsl::copy(primary_out_data, primary_in_data);

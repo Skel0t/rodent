@@ -14,6 +14,7 @@
 #include "float3.h"
 #include "common.h"
 #include "image.h"
+#include "denoise.h"
 
 #if defined(__x86_64__) || defined(__amd64__) || defined(_M_X64)
 #include <x86intrin.h>
@@ -53,6 +54,8 @@ struct Camera {
 
 void setup_interface(size_t, size_t);
 float* get_pixels();
+float* get_alb_pixels();
+float* get_nrm_pixels();
 void clear_pixels();
 void cleanup_interface();
 
@@ -115,6 +118,43 @@ static bool handle_events(uint32_t& iter, Camera& cam) {
     return false;
 }
 
+// gamma corrects the RGB image cointained in data and divides the colors by iter (in place)
+static void gamma_correct(size_t width, size_t height, uint32_t iter, float* data, bool doGamma) {
+    auto inv_iter = 1.0f / iter;
+    auto inv_gamma = doGamma ? 1.0f / 2.2f : 1.0f;
+
+    for (size_t y = 0; y < height; ++y) {
+        for (size_t x = 0; x < width; ++x) {
+            auto idx = (y * width + x);
+            auto r = data[idx * 3 + 0];
+            auto g = data[idx * 3 + 1];
+            auto b = data[idx * 3 + 2];
+
+            data[idx * 3 + 0] = clamp(std::pow(r * inv_iter, inv_gamma), 0.0f, 1.0f);
+            data[idx * 3 + 1] = clamp(std::pow(g * inv_iter, inv_gamma), 0.0f, 1.0f);
+            data[idx * 3 + 2] = clamp(std::pow(b * inv_iter, inv_gamma), 0.0f, 1.0f);
+        }
+    }
+}
+
+#ifdef OIDN
+static void update_texture_raw(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, float* outputPtr) {
+    for (size_t y = 0; y < height; ++y) {
+        for (size_t x = 0; x < width; ++x) {
+            auto r = outputPtr[(y * width + x) * 3 + 0];
+            auto g = outputPtr[(y * width + x) * 3 + 1];
+            auto b = outputPtr[(y * width + x) * 3 + 2];
+
+            buf[y * width + x] =
+                (uint32_t(r * 255.0f) << 16) |
+                (uint32_t(g * 255.0f) << 8)  |
+                 uint32_t(b * 255.0f);
+        }
+    }
+    SDL_UpdateTexture(texture, nullptr, buf, width * sizeof(uint32_t));
+}
+#endif
+
 static void update_texture(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, uint32_t iter) {
     auto film = get_pixels();
     auto inv_iter = 1.0f / iter;
@@ -134,25 +174,22 @@ static void update_texture(uint32_t* buf, SDL_Texture* texture, size_t width, si
     SDL_UpdateTexture(texture, nullptr, buf, width * sizeof(uint32_t));
 }
 #endif
-
-static void save_image(const std::string& out_file, size_t width, size_t height, uint32_t iter) {
+// Saves the RGB image (colors in [0;1]) contained in data
+static void save_image(const std::string& out_file, size_t width, size_t height, float* data) {
     ImageRgba32 img;
     img.width = width;
     img.height = height;
     img.pixels.reset(new uint8_t[width * height * 4]);
 
-    auto film = get_pixels();
-    auto inv_iter = 1.0f / iter;
-    auto inv_gamma = 1.0f / 2.2f;
     for (size_t y = 0; y < height; ++y) {
         for (size_t x = 0; x < width; ++x) {
-            auto r = film[(y * width + x) * 3 + 0];
-            auto g = film[(y * width + x) * 3 + 1];
-            auto b = film[(y * width + x) * 3 + 2];
+            auto r = data[3 * (y * width + x) + 0];
+            auto g = data[3 * (y * width + x) + 1];
+            auto b = data[3 * (y * width + x) + 2];
 
-            img.pixels[4 * (y * width + x) + 0] = clamp(std::pow(r * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
-            img.pixels[4 * (y * width + x) + 1] = clamp(std::pow(g * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
-            img.pixels[4 * (y * width + x) + 2] = clamp(std::pow(b * inv_iter, inv_gamma), 0.0f, 1.0f) * 255.0f;
+            img.pixels[4 * (y * width + x) + 0] = r * 255.0f;
+            img.pixels[4 * (y * width + x) + 1] = g * 255.0f;
+            img.pixels[4 * (y * width + x) + 2] = b * 255.0f;
             img.pixels[4 * (y * width + x) + 3] = 255;
         }
     }
@@ -187,6 +224,8 @@ int main(int argc, char** argv) {
     size_t height = 720;
     float fov = 60.0f;
     float3 eye(0.0f), dir(0.0f, 0.0f, 1.0f), up(0.0f, 1.0f, 0.0f);
+    bool oidn = false;
+    bool aux = false;
 
     for (int i = 1; i < argc; ++i) {
         if (argv[i][0] == '-') {
@@ -223,6 +262,14 @@ int main(int argc, char** argv) {
             } else if (!strcmp(argv[i], "--help")) {
                 usage();
                 return 0;
+            } else if (!strcmp(argv[i], "--oidn")) {
+#ifdef OIDN
+                    oidn = true;
+#else
+                    error("IntelOpenImageDenoise support not activated");
+#endif
+            } else if (!strcmp(argv[i], "--aux")) {
+                aux = true;
             } else {
                 error("Unknown option '", argv[i], "'");
             }
@@ -270,12 +317,27 @@ int main(int argc, char** argv) {
     _mm_setcsr(_mm_getcsr() | (_MM_FLUSH_ZERO_ON | _MM_DENORMALS_ZERO_ON));
 #endif
 
+    const int img_s = width * height * 3 * sizeof(float);
     auto spp = get_spp();
     bool done = false;
     uint64_t timing = 0;
     uint32_t frames = 0;
     uint32_t iter = 0;
     std::vector<double> samples_sec;
+
+#ifndef DISABLE_GUI
+#ifdef OIDN
+    float *pix, *alb, *nrm, *outputPtr;
+    oidn::FilterRef filter;
+    if (oidn) {
+        pix = (float*) malloc(img_s);
+        alb = (float*) malloc(img_s);
+        nrm = (float*) malloc(img_s);
+        outputPtr = (float*) malloc(img_s);
+        filter = create_filter(pix, alb, nrm, outputPtr, width, height);
+    }
+#endif
+#endif
     while (!done) {
 #ifndef DISABLE_GUI
         done = handle_events(iter, cam);
@@ -294,6 +356,19 @@ int main(int argc, char** argv) {
 
         auto ticks = std::chrono::high_resolution_clock::now();
         render(&settings, iter++);
+#ifdef OIDN
+        if (oidn) {
+            std::memcpy(pix, get_pixels(), img_s);
+            std::memcpy(alb, get_alb_pixels(), img_s);
+            std::memcpy(nrm, get_nrm_pixels(), img_s);
+
+            gamma_correct(width, height, iter, pix, true);
+            gamma_correct(width, height, iter, alb, true);
+            gamma_correct(width, height, iter, nrm, false);
+
+            filter.execute();
+        }
+#endif
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
 
         if (bench_iter != 0) {
@@ -317,7 +392,15 @@ int main(int argc, char** argv) {
         }
 
 #ifndef DISABLE_GUI
+#ifdef OIDN
+        if(oidn) {
+            update_texture_raw(buf.get(), texture, width, height, outputPtr);
+        } else {
+            update_texture(buf.get(), texture, width, height, iter);
+        }
+#else
         update_texture(buf.get(), texture, width, height, iter);
+#endif
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
@@ -325,6 +408,15 @@ int main(int argc, char** argv) {
     }
 
 #ifndef DISABLE_GUI
+#ifdef OIDN
+    if (oidn) {
+        free(outputPtr);
+        free(pix);
+        free(nrm);
+        free(alb);
+    }
+#endif
+
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
@@ -332,7 +424,27 @@ int main(int argc, char** argv) {
 #endif
 
     if (out_file != "") {
-        save_image(out_file, width, height, iter);
+        gamma_correct(width, height, iter, get_pixels(), true);
+        if (aux || oidn) {
+            gamma_correct(width, height, iter, get_alb_pixels(), true);
+            gamma_correct(width, height, iter, get_nrm_pixels(), false);
+        }
+        save_image(out_file, width, height, get_pixels());
+        if(aux) {
+            save_image("albedo.png", width, height, get_alb_pixels());
+            save_image("normal.png", width, height, get_nrm_pixels());
+            info("Saved auxiliary feature images to albedo.png and normal.png");
+        }
+        #ifdef OIDN
+            if(oidn) {
+                float* outputPtr = (float*) malloc(img_s);
+                denoise(get_pixels(), get_alb_pixels(), get_nrm_pixels(), outputPtr, width, height);
+                save_image("denoised.png", width, height, outputPtr);
+
+                free(outputPtr);
+                info("Denoising with OIDN done! Saved to denoised.png");
+            }
+        #endif
         info("Image saved to '", out_file, "'");
     }
 
