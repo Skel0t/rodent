@@ -1,0 +1,142 @@
+enum MemoryFormat {
+    CHW, HWC
+}
+
+struct Matrix {
+    buf      : Buffer,
+    offset   : i64,
+    channels : i32,
+    format   : MemoryFormat,
+    rows     : i32,
+    cols     : i32
+}
+
+struct Sparse {
+    buf    : Buffer,
+    offset : i64,
+    rows   : i32,
+    cols   : i32
+}
+
+struct AccM {
+    read  : fn(i32, i32, i32) -> f32,
+    write : fn(i32, i32, i32, f32) -> ()
+}
+
+struct AccS {
+    readC  : fn(i32, i32) -> f32,
+    readI  : fn(i32, i32) -> i32,
+    write : fn(i32, i32, f32, i32) -> ()
+}
+
+fn @make_matrix(buffer: Buffer, offset: i64, format: MemoryFormat, channels: i32, rows: i32, cols: i32) -> Matrix {
+    Matrix { buf = buffer, offset = offset, format = format, channels = channels, rows = rows, cols = cols }
+}
+
+fn @reshape_matrix(m: Matrix, rows: i32, cols: i32) -> Matrix {
+    // if m.rows * m.cols == rows * cols {
+    make_matrix(m.buf, m.offset, m.format, m.channels, rows, cols)
+    /*} else {
+        m
+    }*/
+}
+
+fn @make_sparse(buf: Buffer, offset: i64, rows: i32, cols: i32) -> Sparse {
+    Sparse { buf = buf, offset = offset, rows = rows, cols = cols}
+}
+
+fn @get_sparse_acc(m: Sparse) -> AccS {
+    AccS {
+        readC = @|r, c|       { bitcast[&   [f32]](m.buf.data)(m.offset + (r * m.cols + c)                   as i64) },
+        readI = @|r, c|       { bitcast[&   [i32]](m.buf.data)(m.offset + (r * m.cols + c + m.cols * m.rows) as i64) },
+        write = @|r, c, v, i| { bitcast[&mut[f32]](m.buf.data)(m.offset + (r * m.cols + c)                   as i64) = v;
+                                bitcast[&mut[i32]](m.buf.data)(m.offset + (r * m.cols + c + m.cols * m.rows) as i64) = i; }
+    }
+}
+
+fn @get_mat_acc(m: Matrix) -> AccM {
+    fn @get_mat_acc_hwc(m: Matrix) -> AccM {
+        AccM {
+            read  = @|row, col, chn|      { bitcast[&   [f32]](m.buf.data)(m.offset + ((row * m.cols + col) * m.channels + chn) as i64) },
+            write = @|row, col, chn, val| { bitcast[&mut[f32]](m.buf.data)(m.offset + ((row * m.cols + col) * m.channels + chn) as i64) = val; }
+        }
+    }
+
+    fn @get_mat_acc_chw(m: Matrix) -> AccM {
+        AccM {
+            read  = @|row, col, chn|      { bitcast[&   [f32]](m.buf.data)(m.offset + (row * m.cols + col + chn * m.cols * m.rows) as i64) },
+            write = @|row, col, chn, val| { bitcast[&mut[f32]](m.buf.data)(m.offset + (row * m.cols + col + chn * m.cols * m.rows) as i64) = val; }
+        }
+    }
+
+    match m.format {
+        MemoryFormat::CHW => get_mat_acc_chw(m),
+        MemoryFormat::HWC => get_mat_acc_hwc(m)
+    }
+}
+
+fn @get_cat_mat_acc(acc1: AccM, acc2: AccM, channels1: i32) -> AccM {
+    AccM {
+        read  = @|row, col, chn|      { if chn < channels1 { acc1.read(row, col, chn)        } else { acc2.read(row, col, chn - channels1) } },
+        write = @|row, col, chn, val| { if chn < channels1 { acc1.write(row, col, chn, val); } else { acc2.write(row, col, chn - channels1, val); } }
+    }
+}
+
+fn @matmul(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
+    let m = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let a_acc = get_mat_acc(a);
+    let b_acc = get_mat_acc(b);
+
+    for m_acc, _v, r, c, chn in iterate_matrix_par(m) {
+        m_acc.write(r, c, chn, 0);
+        for i in range(0, a.cols) {
+            m_acc.write(r, c, chn, m_acc.read(r, c, chn) + a_acc.read(r, i, chn) * b_acc.read(i, c, chn));
+        }
+    }
+    m
+}
+
+// Need to have same channel format
+fn @mkl_matmul(a: Matrix, b: Matrix, buf: Buffer, off: i64) {
+    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    mkl_blas_mm_mult(/*m*/ a.rows, /*n*/ b.cols, /*k*/ a.cols,
+        /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))), /*lda*/ a.cols,
+        /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))), /*ldb*/ b.cols,
+        /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))), /*ldc*/ b.cols);
+        c
+}
+
+fn @sparse_mult(a: Sparse, b: Matrix, buf: Buffer, off: i64) -> Matrix {
+    let m = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let b_bc  = bitcast[&[f32]](b.buf.data); // Because matrix a has already the right index in the bitcast array
+
+    for m_acc, _v, r, c, chn in iterate_matrix_par(m) {
+        m_acc.write(r, c, chn, 0);
+        for _acc, v, i, _c in iterate_sparse_row(a, r) {
+            m_acc.write(r, c, chn, m_acc.read(r, c, chn) + v * b_bc(b.offset + i as i64));
+        }
+    }
+    m
+}
+
+fn @add_element_wise(mat1: Matrix, mat2: Matrix, buf: Buffer, off: i64) -> Matrix {
+    let res = make_matrix(buf, off, mat1.format, mat1.channels, mat1.rows, mat1.cols);
+
+    let res_acc  = get_mat_acc(res);
+    let mat2_acc = get_mat_acc(mat2);
+    for _acc, v, r, c, chn in iterate_matrix_par(mat1) {
+        res_acc.write(r, c, chn, mat2_acc.read(r, c, chn) + v);
+    }
+    res
+}
+
+// Need to have same channel format!
+fn @mkl_add_element_wise(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
+    let c = make_matrix(buf, off, a.format, a.channels, a.rows, a.cols);
+
+    let num_elements = a.rows * a.cols * a.channels;
+    mkl_add_elemwise(num_elements, bitcast[&   [f32]](&(a.buf.data(4 * a.offset))),
+                                   bitcast[&   [f32]](&(b.buf.data(4 * b.offset))),
+                                   bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))));
+    c
+}

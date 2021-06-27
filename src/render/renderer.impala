@@ -142,7 +142,7 @@ fn @make_path_tracing_renderer(max_path_len: i32, spp: i32) -> Renderer {
                 let mis = 1 / (1 + next_mis * pdf_lightpick * emit.pdf_area);
                 make_option(color_mulf(color_mul(state.contrib, emit.intensity), mis), albedo, normal)
             } else {
-                Option[(Color, Color, Color)]::None
+                make_option(black, albedo, normal)
             }
         }
 

@@ -42,7 +42,12 @@ set(RODENT_SRCS
     traversal/intersection.impala
     traversal/stack.impala
     traversal/mapping_cpu.impala
-    traversal/mapping_gpu.impala)
+    traversal/mapping_gpu.impala
+    driver/denoiser/interface.art
+    driver/denoiser/iterate.art
+    driver/denoiser/kernel.art
+    driver/denoiser/matrix.art
+    driver/denoiser/nn.art)
 
 set(DRIVER_SRCS
     driver/driver.cpp
@@ -59,7 +64,11 @@ set(DRIVER_SRCS
     driver/common.h
     driver/color.h
     driver/denoise.h
-    driver/denoise.cpp)
+    driver/denoise.cpp
+    driver/denoiser/nn.h
+    driver/denoiser/nn.cpp
+    driver/denoiser/interface.h
+    driver/denoiser/mkl_cblas.cpp)
 
 set(CONVERTER_SRCS
     driver/converter.cpp
@@ -90,6 +99,7 @@ find_package(JPEG REQUIRED)
 find_package(TBB REQUIRED)
 find_package(LZ4 REQUIRED)
 if (OIDN)
+    find_package(LAPACK REQUIRED)
     find_package(OpenImageDenoise REQUIRED)
 endif()
 
@@ -139,7 +149,7 @@ add_executable(rodent ${RODENT_OBJS})
 if (OIDN)
     target_compile_definitions(driver PUBLIC -DOIDN)
     target_include_directories(rodent PUBLIC ${OPENIMAGEDENOISE_INCLUDE_DIR})
-    target_link_libraries(rodent driver ${_openimagedenoise_LIBRARIES})
+    target_link_libraries(rodent driver ${_openimagedenoise_LIBRARIES} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 endif()
 target_link_libraries(rodent driver ${AnyDSL_runtime_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${TBB_LIBRARIES} ${LZ4_LIBRARY})
 

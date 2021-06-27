@@ -137,6 +137,21 @@ static void gamma_correct(size_t width, size_t height, uint32_t iter, float* dat
     }
 }
 
+static void clamp_image(size_t width, size_t height, float* data) {
+    for (size_t y = 0; y < height; ++y) {
+        for (size_t x = 0; x < width; ++x) {
+            auto idx = (y * width + x);
+            auto r = data[idx * 3 + 0];
+            auto g = data[idx * 3 + 1];
+            auto b = data[idx * 3 + 2];
+
+            data[idx * 3 + 0] = clamp(r, 0.0f, 1.0f);
+            data[idx * 3 + 1] = clamp(g, 0.0f, 1.0f);
+            data[idx * 3 + 2] = clamp(b, 0.0f, 1.0f);
+        }
+    }
+}
+
 #ifdef OIDN
 static void update_texture_raw(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, float* outputPtr) {
     for (size_t y = 0; y < height; ++y) {
@@ -327,14 +342,13 @@ int main(int argc, char** argv) {
 
 #ifndef DISABLE_GUI
 #ifdef OIDN
-    float *pix, *alb, *nrm, *outputPtr;
+    anydsl::Array<float> pix, alb, nrm, outputPtr;
     oidn::FilterRef filter;
     if (oidn) {
-        pix = (float*) malloc(img_s);
-        alb = (float*) malloc(img_s);
-        nrm = (float*) malloc(img_s);
-        outputPtr = (float*) malloc(img_s);
-        filter = create_filter(pix, alb, nrm, outputPtr, width, height);
+        pix = anydsl::Array<float>(img_s);
+        alb = anydsl::Array<float>(img_s);
+        nrm = anydsl::Array<float>(img_s);
+        outputPtr = anydsl::Array<float>(img_s);
     }
 #endif
 #endif
@@ -358,15 +372,17 @@ int main(int argc, char** argv) {
         render(&settings, iter++);
 #ifdef OIDN
         if (oidn) {
-            std::memcpy(pix, get_pixels(), img_s);
-            std::memcpy(alb, get_alb_pixels(), img_s);
-            std::memcpy(nrm, get_nrm_pixels(), img_s);
+            anydsl_copy(0, get_pixels(), 0, 0, pix.data(), 0, img_s);
+            anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s);
+            anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s);
 
-            gamma_correct(width, height, iter, pix, true);
-            gamma_correct(width, height, iter, alb, true);
-            gamma_correct(width, height, iter, nrm, false);
+            gamma_correct(width, height, iter, pix.data(), true);
+            gamma_correct(width, height, iter, alb.data(), true);
+            gamma_correct(width, height, iter, nrm.data(), false);
 
-            filter.execute();
+            denoise_nn(&pix, &alb, &nrm, &outputPtr, width, height);
+
+            clamp_image(width, height, outputPtr.data());
         }
 #endif
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
@@ -394,7 +410,7 @@ int main(int argc, char** argv) {
 #ifndef DISABLE_GUI
 #ifdef OIDN
         if(oidn) {
-            update_texture_raw(buf.get(), texture, width, height, outputPtr);
+            update_texture_raw(buf.get(), texture, width, height, outputPtr.data());
         } else {
             update_texture(buf.get(), texture, width, height, iter);
         }
@@ -408,14 +424,6 @@ int main(int argc, char** argv) {
     }
 
 #ifndef DISABLE_GUI
-#ifdef OIDN
-    if (oidn) {
-        free(outputPtr);
-        free(pix);
-        free(nrm);
-        free(alb);
-    }
-#endif
 
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
@@ -437,17 +445,29 @@ int main(int argc, char** argv) {
         }
         #ifdef OIDN
             if(oidn) {
-                float* outputPtr = (float*) malloc(img_s);
-                denoise(get_pixels(), get_alb_pixels(), get_nrm_pixels(), outputPtr, width, height);
-                save_image("denoised.png", width, height, outputPtr);
+                anydsl_copy(0, get_pixels(), 0, 0, pix.data(), 0, img_s);
+                anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s);
+                anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s);
 
-                free(outputPtr);
+                denoise_nn(&pix, &alb, &nrm, &outputPtr, width, height);
+
+                clamp_image(width, height, outputPtr.data());
+
+                save_image("denoised.png", width, height, outputPtr.data());
+
                 info("Denoising with OIDN done! Saved to denoised.png");
             }
         #endif
         info("Image saved to '", out_file, "'");
     }
-
+#ifdef OIDN
+    if (oidn) {
+        outputPtr.release();
+        pix.release();
+        nrm.release();
+        alb.release();
+    }
+#endif
     cleanup_interface();
 
     if (bench_iter != 0) {
