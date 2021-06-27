@@ -152,7 +152,6 @@ static void clamp_image(size_t width, size_t height, float* data) {
     }
 }
 
-#ifdef OIDN
 static void update_texture_raw(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, float* outputPtr) {
     for (size_t y = 0; y < height; ++y) {
         for (size_t x = 0; x < width; ++x) {
@@ -168,7 +167,6 @@ static void update_texture_raw(uint32_t* buf, SDL_Texture* texture, size_t width
     }
     SDL_UpdateTexture(texture, nullptr, buf, width * sizeof(uint32_t));
 }
-#endif
 
 static void update_texture(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, uint32_t iter) {
     auto film = get_pixels();
@@ -229,6 +227,8 @@ static inline void usage() {
               << "   --up     x y z      Sets the up vector of the camera\n"
               << "   --fov    degrees    Sets the horizontal field of view (in degrees)\n"
               << "   --bench  iterations Enables benchmarking mode and sets the number of iterations\n"
+              << "   --denoise           Enables denoising with neural network\n"
+              << "   --live"
               << "   -o       image.png  Writes the output image to a file" << std::endl;
 }
 
@@ -239,7 +239,8 @@ int main(int argc, char** argv) {
     size_t height = 720;
     float fov = 60.0f;
     float3 eye(0.0f), dir(0.0f, 0.0f, 1.0f), up(0.0f, 1.0f, 0.0f);
-    bool oidn = false;
+    bool dns = false;
+    bool live = false;
     bool aux = false;
 
     for (int i = 1; i < argc; ++i) {
@@ -277,12 +278,10 @@ int main(int argc, char** argv) {
             } else if (!strcmp(argv[i], "--help")) {
                 usage();
                 return 0;
-            } else if (!strcmp(argv[i], "--oidn")) {
-#ifdef OIDN
-                    oidn = true;
-#else
-                    error("IntelOpenImageDenoise support not activated");
-#endif
+            } else if (!strcmp(argv[i], "--denoise")) {
+                dns = true;
+            } else if (!strcmp(argv[i], "--live")) {
+                live = true;
             } else if (!strcmp(argv[i], "--aux")) {
                 aux = true;
             } else {
@@ -339,18 +338,23 @@ int main(int argc, char** argv) {
     uint32_t frames = 0;
     uint32_t iter = 0;
     std::vector<double> samples_sec;
+    live = live && dns;
 
 #ifndef DISABLE_GUI
-#ifdef OIDN
     anydsl::Array<float> pix, alb, nrm, outputPtr;
-    oidn::FilterRef filter;
-    if (oidn) {
+    anydsl::Array<float> weights;
+    anydsl::Array<uint8_t> memory;
+    float* biases;
+
+    if (dns) {
+        read_in(&weights, &biases);
+        memory = anydsl::Array<uint8_t>(get_necessary_mem(width, height));
+
         pix = anydsl::Array<float>(img_s);
         alb = anydsl::Array<float>(img_s);
         nrm = anydsl::Array<float>(img_s);
         outputPtr = anydsl::Array<float>(img_s);
     }
-#endif
 #endif
     while (!done) {
 #ifndef DISABLE_GUI
@@ -370,8 +374,7 @@ int main(int argc, char** argv) {
 
         auto ticks = std::chrono::high_resolution_clock::now();
         render(&settings, iter++);
-#ifdef OIDN
-        if (oidn) {
+        if (live) {
             anydsl_copy(0, get_pixels(), 0, 0, pix.data(), 0, img_s);
             anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s);
             anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s);
@@ -380,11 +383,10 @@ int main(int argc, char** argv) {
             gamma_correct(width, height, iter, alb.data(), true);
             gamma_correct(width, height, iter, nrm.data(), false);
 
-            denoise_nn(&pix, &alb, &nrm, &outputPtr, width, height);
+            denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, biases);
 
             clamp_image(width, height, outputPtr.data());
         }
-#endif
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
 
         if (bench_iter != 0) {
@@ -408,15 +410,11 @@ int main(int argc, char** argv) {
         }
 
 #ifndef DISABLE_GUI
-#ifdef OIDN
-        if(oidn) {
+        if(live) {
             update_texture_raw(buf.get(), texture, width, height, outputPtr.data());
         } else {
             update_texture(buf.get(), texture, width, height, iter);
         }
-#else
-        update_texture(buf.get(), texture, width, height, iter);
-#endif
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
@@ -433,7 +431,7 @@ int main(int argc, char** argv) {
 
     if (out_file != "") {
         gamma_correct(width, height, iter, get_pixels(), true);
-        if (aux || oidn) {
+        if (aux || dns) {
             gamma_correct(width, height, iter, get_alb_pixels(), true);
             gamma_correct(width, height, iter, get_nrm_pixels(), false);
         }
@@ -443,31 +441,30 @@ int main(int argc, char** argv) {
             save_image("normal.png", width, height, get_nrm_pixels());
             info("Saved auxiliary feature images to albedo.png and normal.png");
         }
-        #ifdef OIDN
-            if(oidn) {
-                anydsl_copy(0, get_pixels(), 0, 0, pix.data(), 0, img_s);
-                anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s);
-                anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s);
+        if(dns) {
+            anydsl_copy(0, get_pixels(), 0, 0, pix.data(), 0, img_s);
+            anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s);
+            anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s);
 
-                denoise_nn(&pix, &alb, &nrm, &outputPtr, width, height);
+            denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, biases);
 
-                clamp_image(width, height, outputPtr.data());
+            clamp_image(width, height, outputPtr.data());
 
-                save_image("denoised.png", width, height, outputPtr.data());
+            save_image("denoised.png", width, height, outputPtr.data());
 
-                info("Denoising with OIDN done! Saved to denoised.png");
-            }
-        #endif
+            info("Denoising done! Saved to denoised.png");
+        }
         info("Image saved to '", out_file, "'");
     }
-#ifdef OIDN
-    if (oidn) {
+    if (dns) {
+        weights.release();
+        memory.release();
         outputPtr.release();
         pix.release();
         nrm.release();
         alb.release();
+        free(biases);
     }
-#endif
     cleanup_interface();
 
     if (bench_iter != 0) {

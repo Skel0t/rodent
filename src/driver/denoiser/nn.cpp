@@ -1,7 +1,6 @@
 #include <iostream>
 #include <fstream>
 
-#include "interface.h"
 #include "nn.h"
 
 void read_in_weigths_hwc(float* buffer, int offset, std::string path, int in_channels, int out_channels, int ksize) {

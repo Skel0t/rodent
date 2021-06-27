@@ -235,7 +235,6 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
 
         // Write result in output buffer
         chw_to_hwc(img_mat, out_buf, 0);
-        print_string("denoise done\n");
     }
 
     NN_DEN { forward = forward_denoise, necess_mem = necess_mem }

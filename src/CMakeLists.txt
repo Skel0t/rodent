@@ -6,7 +6,6 @@ set(MEGAKERNEL_FUSION ON CACHE BOOL "Set to true to enable simple shader fusion 
 set(MAX_PATH_LEN "64" CACHE STRING "Maximum path length")
 set(DISABLE_GUI OFF CACHE BOOL "Set to true to disable GUI")
 set(SPP "4" CACHE STRING "Samples per pixel")
-set(OIDN OFF CACHE BOOL "Set to true to enable OIDN support")
 if (SCENE_FILE STREQUAL "")
     message(FATAL_ERROR "Please specify a valid OBJ scene in the SCENE_FILE variable")
 endif()
@@ -98,10 +97,7 @@ find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 find_package(TBB REQUIRED)
 find_package(LZ4 REQUIRED)
-if (OIDN)
-    find_package(LAPACK REQUIRED)
-    find_package(OpenImageDenoise REQUIRED)
-endif()
+find_package(LAPACK REQUIRED)
 
 add_executable(converter ${CONVERTER_SRCS})
 add_dependencies(converter rodent_c_interface)
@@ -146,12 +142,7 @@ endif()
 
 add_executable(rodent ${RODENT_OBJS})
 
-if (OIDN)
-    target_compile_definitions(driver PUBLIC -DOIDN)
-    target_include_directories(rodent PUBLIC ${OPENIMAGEDENOISE_INCLUDE_DIR})
-    target_link_libraries(rodent driver ${_openimagedenoise_LIBRARIES} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
-endif()
-target_link_libraries(rodent driver ${AnyDSL_runtime_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${TBB_LIBRARIES} ${LZ4_LIBRARY})
+target_link_libraries(rodent driver ${AnyDSL_runtime_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${TBB_LIBRARIES} ${LZ4_LIBRARY} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 
 if (SCENE_FILE STREQUAL "${PROJECT_SOURCE_DIR}/testing/cornell_box.obj")
     # Test rodent when the cornell box is used
