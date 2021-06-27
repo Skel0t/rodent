@@ -219,17 +219,18 @@ static inline void check_arg(int argc, char** argv, int arg, int n) {
 static inline void usage() {
     std::cout << "Usage: rodent [options]\n"
               << "Available options:\n"
-              << "   --help              Shows this message\n"
-              << "   --width  pixels     Sets the viewport horizontal dimension (in pixels)\n"
-              << "   --height pixels     Sets the viewport vertical dimension (in pixels)\n"
-              << "   --eye    x y z      Sets the position of the camera\n"
-              << "   --dir    x y z      Sets the direction vector of the camera\n"
-              << "   --up     x y z      Sets the up vector of the camera\n"
-              << "   --fov    degrees    Sets the horizontal field of view (in degrees)\n"
-              << "   --bench  iterations Enables benchmarking mode and sets the number of iterations\n"
-              << "   --denoise           Enables denoising with neural network\n"
-              << "   --live"
-              << "   -o       image.png  Writes the output image to a file" << std::endl;
+              << "   --help                Shows this message\n"
+              << "   --width   pixels      Sets the viewport horizontal dimension (in pixels)\n"
+              << "   --height  pixels      Sets the viewport vertical dimension (in pixels)\n"
+              << "   --eye     x y z       Sets the position of the camera\n"
+              << "   --dir     x y z       Sets the direction vector of the camera\n"
+              << "   --up      x y z       Sets the up vector of the camera\n"
+              << "   --fov     degrees     Sets the horizontal field of view (in degrees)\n"
+              << "   --bench   iterations  Enables benchmarking mode and sets the number of iterations\n"
+              << "   --denoise denoise.png Enables denoising with neural network\n"
+              << "   --live                Enables live denoising if denoise flag is set\n"
+              << "   --aux                 Saves rendered normal and albedo image\n"
+              << "   -o        image.png   Writes the output image to a file" << std::endl;
 }
 
 int main(int argc, char** argv) {
@@ -239,7 +240,7 @@ int main(int argc, char** argv) {
     size_t height = 720;
     float fov = 60.0f;
     float3 eye(0.0f), dir(0.0f, 0.0f, 1.0f), up(0.0f, 1.0f, 0.0f);
-    bool dns = false;
+    std::string dns = "";
     bool live = false;
     bool aux = false;
 
@@ -279,7 +280,8 @@ int main(int argc, char** argv) {
                 usage();
                 return 0;
             } else if (!strcmp(argv[i], "--denoise")) {
-                dns = true;
+                check_arg(argc, argv, i, 1);
+                dns = argv[++i];
             } else if (!strcmp(argv[i], "--live")) {
                 live = true;
             } else if (!strcmp(argv[i], "--aux")) {
@@ -338,7 +340,7 @@ int main(int argc, char** argv) {
     uint32_t frames = 0;
     uint32_t iter = 0;
     std::vector<double> samples_sec;
-    live = live && dns;
+    live = live && (dns != "");
 
 #ifndef DISABLE_GUI
     anydsl::Array<float> pix, alb, nrm, outputPtr;
@@ -346,7 +348,7 @@ int main(int argc, char** argv) {
     anydsl::Array<uint8_t> memory;
     float* biases;
 
-    if (dns) {
+    if (dns != "") {
         read_in(&weights, &biases);
         memory = anydsl::Array<uint8_t>(get_necessary_mem(width, height));
 
@@ -429,34 +431,36 @@ int main(int argc, char** argv) {
     SDL_Quit();
 #endif
 
-    if (out_file != "") {
+    if (aux || dns != "") {
+        gamma_correct(width, height, iter, get_alb_pixels(), true);
+        gamma_correct(width, height, iter, get_nrm_pixels(), false);
+    }
+    if(aux) {
+        save_image("albedo.png", width, height, get_alb_pixels());
+        save_image("normal.png", width, height, get_nrm_pixels());
+        info("Saved auxiliary feature images to albedo.png and normal.png");
+    }
+    if (out_file != "" || dns != "") {
         gamma_correct(width, height, iter, get_pixels(), true);
-        if (aux || dns) {
-            gamma_correct(width, height, iter, get_alb_pixels(), true);
-            gamma_correct(width, height, iter, get_nrm_pixels(), false);
+        if (out_file != "") {
+            save_image(out_file, width, height, get_pixels());
+            info("Image saved to '", out_file, "'");
         }
-        save_image(out_file, width, height, get_pixels());
-        if(aux) {
-            save_image("albedo.png", width, height, get_alb_pixels());
-            save_image("normal.png", width, height, get_nrm_pixels());
-            info("Saved auxiliary feature images to albedo.png and normal.png");
-        }
-        if(dns) {
-            anydsl_copy(0, get_pixels(), 0, 0, pix.data(), 0, img_s);
+        if(dns != "") {
+            anydsl_copy(0, get_pixels(),     0, 0, pix.data(), 0, img_s);
             anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s);
             anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s);
 
             denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, biases);
-
             clamp_image(width, height, outputPtr.data());
 
             save_image("denoised.png", width, height, outputPtr.data());
 
-            info("Denoising done! Saved to denoised.png");
+            info("Denoising done! Saved to '", dns, "'");
         }
-        info("Image saved to '", out_file, "'");
     }
-    if (dns) {
+
+    if (dns != "") {
         weights.release();
         memory.release();
         outputPtr.release();
