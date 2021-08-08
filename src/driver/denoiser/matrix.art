@@ -11,47 +11,13 @@ struct Matrix {
     cols     : i32
 }
 
-struct Sparse {
-    buf    : Buffer,
-    offset : i64,
-    rows   : i32,
-    cols   : i32
-}
-
 struct AccM {
     read  : fn(i32, i32, i32) -> f32,
     write : fn(i32, i32, i32, f32) -> ()
 }
 
-struct AccS {
-    readC  : fn(i32, i32) -> f32,
-    readI  : fn(i32, i32) -> i32,
-    write : fn(i32, i32, f32, i32) -> ()
-}
-
 fn @make_matrix(buffer: Buffer, offset: i64, format: MemoryFormat, channels: i32, rows: i32, cols: i32) -> Matrix {
     Matrix { buf = buffer, offset = offset, format = format, channels = channels, rows = rows, cols = cols }
-}
-
-fn @reshape_matrix(m: Matrix, rows: i32, cols: i32) -> Matrix {
-    // if m.rows * m.cols == rows * cols {
-    make_matrix(m.buf, m.offset, m.format, m.channels, rows, cols)
-    /*} else {
-        m
-    }*/
-}
-
-fn @make_sparse(buf: Buffer, offset: i64, rows: i32, cols: i32) -> Sparse {
-    Sparse { buf = buf, offset = offset, rows = rows, cols = cols}
-}
-
-fn @get_sparse_acc(m: Sparse) -> AccS {
-    AccS {
-        readC = @|r, c|       { bitcast[&   [f32]](m.buf.data)(m.offset + (r * m.cols + c)                   as i64) },
-        readI = @|r, c|       { bitcast[&   [i32]](m.buf.data)(m.offset + (r * m.cols + c + m.cols * m.rows) as i64) },
-        write = @|r, c, v, i| { bitcast[&mut[f32]](m.buf.data)(m.offset + (r * m.cols + c)                   as i64) = v;
-                                bitcast[&mut[i32]](m.buf.data)(m.offset + (r * m.cols + c + m.cols * m.rows) as i64) = i; }
-    }
 }
 
 fn @get_mat_acc(m: Matrix) -> AccM {
@@ -83,17 +49,83 @@ fn @get_cat_mat_acc(acc1: AccM, acc2: AccM, channels1: i32) -> AccM {
 }
 
 fn @matmul(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
-    let m = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let mat = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     let a_acc = get_mat_acc(a);
     let b_acc = get_mat_acc(b);
+    let m_acc = get_mat_acc(mat);
 
-    for m_acc, _v, r, c, chn in iterate_matrix_par(m) {
-        m_acc.write(r, c, chn, 0);
-        for i in range(0, a.cols) {
-            m_acc.write(r, c, chn, m_acc.read(r, c, chn) + a_acc.read(r, i, chn) * b_acc.read(i, c, chn));
+    let c_size = 64;
+    let i_size = 16;
+
+    let mut m : [f32 * 64];
+
+    let c_vec_len = round_down(mat.cols, c_size);
+
+    for c in range_step(0, c_vec_len, c_size) {
+        for r in range(0, mat.rows) {
+            vectorize(64, @|j| {
+                m(j) = 0;
+                for i in unroll(0, i_size) {
+                    m(j) += a_acc.read(r, i, 0) * b_acc.read(i, c + j, 0);
+                }
+                m_acc.write(r, c + j, 0, m(j));
+            });
+        }
+
+        let i_vec_len = round_down(a.cols, i_size);
+
+        for ii in range_step(i_size, i_vec_len, i_size) {
+            for r in range(0, mat.rows) {
+                vectorize(64, @|j| {
+                    m(j) = m_acc.read(r, c + j, 0);
+                    for i_loop in unroll(0, i_size) {
+                        let i = i_loop + ii;
+                        m(j) += a_acc.read(r, i, 0) * b_acc.read(i, c + j, 0);
+                    }
+                    m_acc.write(r, c + j, 0, m(j));
+                });
+            }
+        }
+        for r in range(0, mat.rows) {
+            for c_inner in range(c, imin(c + c_size, mat.cols)) {
+                m(0) = m_acc.read(r, c_inner, 0);
+                for i in range(i_vec_len, a.cols) {
+                    m(0) += a_acc.read(r, i, 0) * b_acc.read(i, c_inner, 0);
+                }
+                m_acc.write(r, c_inner, 0, m(0));
+            }
         }
     }
-    m
+    for c in range(c_vec_len, mat.cols) {
+
+        let i_vec_len = round_down(a.cols, i_size);
+
+        for ii in range_step(i_size, i_vec_len, i_size) {
+            for r in range(0, mat.rows) {
+                m(0) = m_acc.read(r, c, 0);
+                for i_loop in unroll(0, i_size) {
+                    let i = i_loop + ii;
+                    m(0) += a_acc.read(r, i, 0) * b_acc.read(i, c, 0);
+                }
+                m_acc.write(r, c, 0, m(0));
+            }
+        }
+        for r in range(0, mat.rows) {
+            for c_inner in range(c, imin(c + c_size, mat.cols)) {
+                m(0) = m_acc.read(r, c_inner, 0);
+                for i in range(i_vec_len, a.cols) {
+                    m(0) += a_acc.read(r, i, 0) * b_acc.read(i, c_inner, 0);
+                }
+                m_acc.write(r, c_inner, 0, m(0));
+            }
+        }
+    }
+
+    mat
+}
+
+fn @imin(a: i32, b: i32) -> i32 {
+    if a < b { a } else { b }
 }
 
 // Need to have same channel format
@@ -138,19 +170,6 @@ fn @copy_dev_to_host(host_memory: &mut [i8], device_memory: &[i8], dev: i32, siz
     runtime_copy(runtime_device(1, dev), device_memory, 0, runtime_device(0, 0), host_memory, 0, size);
 }
 
-fn @sparse_mult(a: Sparse, b: Matrix, buf: Buffer, off: i64) -> Matrix {
-    let m = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
-    let b_bc  = bitcast[&[f32]](b.buf.data); // Because matrix a has already the right index in the bitcast array
-
-    for m_acc, _v, r, c, chn in iterate_matrix_par(m) {
-        m_acc.write(r, c, chn, 0);
-        for _acc, v, i, _c in iterate_sparse_row(a, r) {
-            m_acc.write(r, c, chn, m_acc.read(r, c, chn) + v * b_bc(b.offset + i as i64));
-        }
-    }
-    m
-}
-
 fn @add_element_wise(mat1: Matrix, mat2: Matrix, buf: Buffer, off: i64) -> Matrix {
     let res = make_matrix(buf, off, mat1.format, mat1.channels, mat1.rows, mat1.cols);
 
@@ -160,15 +179,4 @@ fn @add_element_wise(mat1: Matrix, mat2: Matrix, buf: Buffer, off: i64) -> Matri
         res_acc.write(r, c, chn, mat2_acc.read(r, c, chn) + v);
     }
     res
-}
-
-// Need to have same channel format!
-fn @mkl_add_element_wise(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
-    let c = make_matrix(buf, off, a.format, a.channels, a.rows, a.cols);
-
-    let num_elements = a.rows * a.cols * a.channels;
-    mkl_add_elemwise(num_elements, bitcast[&   [f32]](&(a.buf.data(4 * a.offset))),
-                                   bitcast[&   [f32]](&(b.buf.data(4 * b.offset))),
-                                   bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))));
-    c
 }
