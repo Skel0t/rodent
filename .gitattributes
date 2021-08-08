@@ -1,0 +1,4 @@
+./tools/bench_convolution/dumped_data/*/*.txt filter=lfs diff=lfs merge=lfs -text
+*.txt filter=lfs diff=lfs merge=lfs -text
+*.txt !text !filter !merge !diff
+tools/bench_convolution/dumped_data/*/*.txt filter=lfs diff=lfs merge=lfs -text

@@ -174,7 +174,7 @@ fn @im2col(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_height
 
     let res_mat = make_matrix(buf, off, MemoryFormat::CHW, 1, channels * ksize_sq as i32, img_s as i32);
 
-    for chn in range(0, channels) {
+    for chn in parallel(0, 0, channels) {
         for base_col in range(0, img_s as i32) {
             let mut base_row = (chn as i64) * (img_s * ksize_sq);
 
