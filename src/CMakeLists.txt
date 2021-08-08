@@ -66,8 +66,8 @@ set(DRIVER_SRCS
     driver/denoise.cpp
     driver/denoiser/nn.h
     driver/denoiser/nn.cpp
-    driver/denoiser/interface.h
-    driver/denoiser/mkl_cblas.cpp)
+    driver/denoiser/mkl_cblas.cpp
+    driver/denoiser/cublas.cpp)
 
 set(CONVERTER_SRCS
     driver/converter.cpp
@@ -98,6 +98,7 @@ find_package(JPEG REQUIRED)
 find_package(TBB REQUIRED)
 find_package(LZ4 REQUIRED)
 find_package(LAPACK REQUIRED)
+find_package(CUDA REQUIRED)
 
 add_executable(converter ${CONVERTER_SRCS})
 add_dependencies(converter rodent_c_interface)
@@ -123,7 +124,7 @@ add_custom_target(convert DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/main.impala)
 set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/main.impala PROPERTIES GENERATED TRUE)
 
 add_library(driver ${DRIVER_SRCS})
-target_include_directories(driver PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${LZ4_INCLUDE_DIR})
+target_include_directories(driver PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${LZ4_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 add_dependencies(driver rodent_c_interface)
 if (EMBREE_FOUND)
     target_include_directories(driver PUBLIC ${EMBREE_ROOT_DIR}/include ${EMBREE_ROOT_DIR} ${EMBREE_LIBRARY_DIR} ${PNG_INCLUDE_DIRS} ${JPEG_INCLUDE_DIRS} ${TBB_INCLUDE_DIRS} ${LZ4_INCLUDE_DIR})
@@ -142,7 +143,7 @@ endif()
 
 add_executable(rodent ${RODENT_OBJS})
 
-target_link_libraries(rodent driver ${AnyDSL_runtime_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${TBB_LIBRARIES} ${LZ4_LIBRARY} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+target_link_libraries(rodent driver ${AnyDSL_runtime_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${TBB_LIBRARIES} ${LZ4_LIBRARY} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY})
 
 if (SCENE_FILE STREQUAL "${PROJECT_SOURCE_DIR}/testing/cornell_box.obj")
     # Test rodent when the cornell box is used

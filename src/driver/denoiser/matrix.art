@@ -106,6 +106,38 @@ fn @mkl_matmul(a: Matrix, b: Matrix, buf: Buffer, off: i64) {
         c
 }
 
+// Need to have same channel format
+fn @cublas_matmul(a: Matrix, b: Matrix, device: i32, buf: Buffer, off: i64) {
+    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+
+    let d_a = runtime_alloc(runtime_device(1, device), 4 * a.rows as i64 * a.cols as i64 * a.channels as i64);
+    let d_b = runtime_alloc(runtime_device(1, device), 4 * b.rows as i64 * b.cols as i64 * b.channels as i64);
+    let d_c = runtime_alloc(runtime_device(1, device), 4 * c.rows as i64 * c.cols as i64 * c.channels as i64);
+
+    copy_host_to_dev(bitcast[&   [i8]](&(a.buf.data(4 * a.offset))), d_a, device, 4 * a.rows as i64 * a.cols as i64 * a.channels as i64);
+    copy_host_to_dev(bitcast[&   [i8]](&(b.buf.data(4 * b.offset))), d_b, device, 4 * b.rows as i64 * b.cols as i64 * b.channels as i64);
+
+    cublas_gemm(
+        /*a*/ bitcast[&   [f32]](d_a),
+        /*b*/ bitcast[&   [f32]](d_b),
+        /*c*/ bitcast[&mut[f32]](d_c),
+        /*lda*/ a.cols, /*ldb*/ a.rows, /*ldc*/ b.cols, device);
+
+    copy_dev_to_host(bitcast[&mut[i8]](&(c.buf.data(4 * c.offset))), d_c, device, 4 * c.rows as i64 * c.cols as i64 * c.channels as i64);
+    runtime_release(runtime_device(1, device), d_a);
+    runtime_release(runtime_device(1, device), d_b);
+    runtime_release(runtime_device(1, device), d_c);
+    c
+}
+
+fn @copy_host_to_dev(host_memory: &[i8], device_memory: &mut [i8], dev: i32, size: i64) -> () {
+    runtime_copy(runtime_device(0, 0), host_memory, 0, runtime_device(1, dev), device_memory, 0, size);
+}
+
+fn @copy_dev_to_host(host_memory: &mut [i8], device_memory: &[i8], dev: i32, size: i64) -> () {
+    runtime_copy(runtime_device(1, dev), device_memory, 0, runtime_device(0, 0), host_memory, 0, size);
+}
+
 fn @sparse_mult(a: Sparse, b: Matrix, buf: Buffer, off: i64) -> Matrix {
     let m = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     let b_bc  = bitcast[&[f32]](b.buf.data); // Because matrix a has already the right index in the bitcast array
