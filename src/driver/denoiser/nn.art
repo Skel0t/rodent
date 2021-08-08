@@ -154,81 +154,81 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
 
         // Convolution 1
         img_mat = cat_conv(ksize, out_channels_1, in_channels_1, flattened_kernels(1), biases(1), img_mat.rows, img_mat.cols, cat_acc, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
 
         // Convolution 2
         img_mat = conv_with_im2col(ksize, out_channels_2, flattened_kernels(2), biases(2), img_mat, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
         img_mat = max_pool_2(img_mat, mem, size_im2col + size_img);    // POOL 1
 
         let pool_1 = get_mat_acc(img_mat);
 
         // Convolution 3
         img_mat = conv_with_im2col(ksize, out_channels_3, flattened_kernels(3), biases(3), img_mat, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
         img_mat = max_pool_2(img_mat, mem, size_im2col + size_img + size_pool_1);    // POOL 2
 
         let pool_2 = get_mat_acc(img_mat);
 
         // Convolution 4
         img_mat = conv_with_im2col(ksize, out_channels_4, flattened_kernels(4), biases(4), img_mat, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
         img_mat = max_pool_2(img_mat, mem, size_im2col + size_img + size_pool_1 + size_pool_2);    // POOL 3
 
         let pool_3 = get_mat_acc(img_mat);
 
         // Convolution 5
         img_mat = conv_with_im2col(ksize, out_channels_5, flattened_kernels(5), biases(5), img_mat, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
         img_mat = max_pool_2(img_mat, mem, size_im2col);
 
         // Convolution 6
         img_mat = conv_with_im2col(ksize, out_channels_6, flattened_kernels(6), biases(6), img_mat, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
 
         // Convolution 7
         img_mat = conv_with_im2col(ksize, out_channels_7, flattened_kernels(7), biases(7), img_mat, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, 0);
+        img_mat = leaky_relu(img_mat, mem, 0);
 
         // Convolution 8
         img_mat = nearest(img_mat, mem, size_im2col);
         let cat_acc_1 = get_cat_mat_acc(get_mat_acc(img_mat), pool_3, img_mat.channels);
         img_mat = cat_conv(ksize, out_channels_8, in_channels_8, flattened_kernels(8), biases(8), img_mat.rows, img_mat.cols, cat_acc_1, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
 
         // Convolution 9
         img_mat = conv_with_im2col(ksize, out_channels_9, flattened_kernels(9), biases(9), img_mat, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, 0);
+        img_mat = leaky_relu(img_mat, mem, 0);
 
         // Convolution 10
         img_mat = nearest(img_mat, mem, size_im2col);
         let cat_acc_2 = get_cat_mat_acc(get_mat_acc(img_mat), pool_2, img_mat.channels);
         img_mat = cat_conv(ksize, out_channels_10, in_channels_10, flattened_kernels(10), biases(10), img_mat.rows, img_mat.cols, cat_acc_2, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
 
         // Convolution 11
         img_mat = conv_with_im2col(ksize, out_channels_11, flattened_kernels(11), biases(11), img_mat, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, 0);
+        img_mat = leaky_relu(img_mat, mem, 0);
 
         // Convolution 12
         img_mat = nearest(img_mat, mem, size_im2col);
         let cat_acc_3 = get_cat_mat_acc(get_mat_acc(img_mat), pool_1, img_mat.channels);
         img_mat = cat_conv(ksize, out_channels_12, in_channels_12, flattened_kernels(12), biases(12), img_mat.rows, img_mat.cols, cat_acc_3, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
 
         // Convolution 13
         img_mat = conv_with_im2col(ksize, out_channels_13, flattened_kernels(13), biases(13), img_mat, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, 0);
+        img_mat = leaky_relu(img_mat, mem, 0);
 
         // Convolution 14
         img_mat = nearest(img_mat, mem, size_im2col);
         let cat_acc_4 = get_cat_mat_acc(get_mat_acc(img_mat), cat_acc, img_mat.channels);
         img_mat = cat_conv(ksize, out_channels_14, in_channels_14, flattened_kernels(14), biases(14), img_mat.rows, img_mat.cols, cat_acc_4, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
 
         // Convolution 15
         img_mat = conv_with_im2col(ksize, out_channels_15, flattened_kernels(15), biases(15), img_mat, true, mem, 0, size_im2col);
-        img_mat = mkl_relu(img_mat, mem, size_im2col);
+        img_mat = leaky_relu(img_mat, mem, size_im2col);
 
         // Convolution 16
         img_mat = conv_with_im2col(ksize, out_channels_16, flattened_kernels(16), biases(16), img_mat, true, mem, 0, size_im2col);

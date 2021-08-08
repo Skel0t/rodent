@@ -1,76 +1,3 @@
-fn @make_conv_matrix(kernel: Matrix, img_mat: Matrix, buf: Buffer, off: i64) -> Sparse {
-    let width    = img_mat.cols;
-    let height   = img_mat.rows;
-    let channels = img_mat.channels;
-    let format   = img_mat.format;
-
-    let ksizeh_r = kernel.rows / 2;
-    let ksizeh_c = kernel.cols / 2;
-
-    let mat   = make_sparse(buf, off, width * height, kernel.cols * kernel.rows * kernel.channels);
-    let m_acc = get_sparse_acc(mat);
-    let k_acc = get_mat_acc(kernel);
-
-    for j in parallel(0, 0, height) {
-        for i in range(0, width) {
-            let s_row = j * width + i;
-            for r in unroll(-ksizeh_r, ksizeh_r+1) {
-                for c in unroll(-ksizeh_c, ksizeh_c+1) {
-                    let im_row = j + r;
-                    let im_col = i + c;
-
-                    let k_row = r + ksizeh_r;
-                    let k_col = c + ksizeh_c;
-
-                    let s_col = (k_row * kernel.cols + k_col) * kernel.channels;
-                    for channel in unroll(0, channels) {
-                        if im_row < 0 || im_col < 0 || im_col >= width || im_row >= height {
-                            m_acc.write(s_row, s_col + channel, 0, 0); // padding with 0s s.t. image size at start and end is the same
-                            continue()
-                        }
-                        let mut index : i32;
-                        match format {
-                            MemoryFormat::HWC => { index = (im_row * width + im_col) * channels + channel; },
-                            MemoryFormat::CHW => { index = (im_row * width + im_col) + channel * width * height; }
-                        }
-                        m_acc.write(s_row, s_col + channel, k_acc.read(k_row, k_col, channel), index);
-                    }
-                }
-            }
-        }
-    }
-    mat
-}
-
-
-fn @convolute(kernel: Matrix, img_mat: Matrix, bias: f32, use_bias: bool, buf: Buffer, off: i64, off_result: i64) -> () {
-    let m = reshape_matrix(img_mat, img_mat.rows * img_mat.cols, 1);    // Doesn't really do anything, since m is just used bitcast. But it's necessary to have the right dimensions for multiplication.
-
-    let conv = make_conv_matrix(kernel, img_mat, buf, off);
-    let prod = sparse_mult(conv, m, buf, off_result);
-
-    if use_bias {
-        for acc, v, r, c, chn in iterate_matrix_par(prod) {
-            acc.write(r, c, chn, v + bias);
-        }
-    }
-}
-
-fn @conv2d(out_channels: i32, kernels: fn(i32) -> Matrix, biases: fn(i32) -> f32, img_mat: Matrix, use_bias: bool, buf: Buffer, off: i64) -> Matrix {
-    let width  = img_mat.cols;
-    let height = img_mat.rows;
-
-    let result_size = width as i64 * height as i64;
-    let sparse_size = 2 * (width as i64) * (height as i64) * (kernels(0).cols as i64) * (kernels(0).rows as i64) * (kernels(0).channels as i64);
-
-    for i in range(0, out_channels) {
-        let buf_off  = off + i as i64 * result_size + sparse_size;
-        convolute(kernels(i), img_mat, biases(i), use_bias, buf, off, buf_off);
-    }
-
-    make_matrix(buf, off + sparse_size, MemoryFormat::CHW, out_channels, height, width)
-}
-
 fn @max_pool_2(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows / 2, img_mat.cols / 2);
     let img_acc = get_mat_acc(img_mat);
@@ -151,13 +78,11 @@ fn @conv_with_im2col(ksize: i32, out_channels: i32, flattened_kernels: Matrix, b
     let out_height = (img_mat.rows + 2 * padding - ksize) + 1;
 
     let im2col_mat = im2col(ksize, out_width, out_height, img_mat.cols, img_mat.rows, img_mat.channels, get_mat_acc(img_mat), padding, buf, off);
-    let prod       = mkl_matmul(flattened_kernels, im2col_mat, buf, off_res);
+    let prod       = matmul(flattened_kernels, im2col_mat, buf, off_res);
 
     if use_bias {
-        for row in range(0, prod.rows) {
-            let offset = 4 * (prod.offset + (row * prod.cols) as i64);
-            mkl_add_constant(/*n*/ prod.cols, /*a*/ bitcast[&[f32]](&(prod.buf.data(offset))),
-                             /*val*/ biases(row), /*res*/ bitcast[&mut[f32]](&(prod.buf.data(offset))));    // 1 channel per row
+        for acc, v, row, col, chn in iterate_matrix_par(prod) {
+            acc.write(row, col, chn, v + biases(row));  // 1 channel per row
         }
     }
 
@@ -175,30 +100,29 @@ fn @im2col(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_height
     let res_mat = make_matrix(buf, off, MemoryFormat::CHW, 1, channels * ksize_sq as i32, img_s as i32);
 
     for chn in parallel(0, 0, channels) {
-        for base_col in range(0, img_s as i32) {
-            let mut base_row = (chn as i64) * (img_s * ksize_sq);
+        for r in range(0, out_height) {
+            for c in range(0, out_width) {
+                let mut base_row = (chn as i64) * (img_s * ksize_sq);
+                let     base_col = r * out_width + c;
 
-            let row = base_col / out_width;
-            let col = base_col % out_width;
+                let p_row = r - padding;
+                let p_col = c - padding;
 
-            let p_row = row - padding;
-            let p_col = col - padding;
+                for y in unroll(0, ksize) {
+                    for x in unroll(0, ksize) {
+                        let h = p_row + y;
+                        let w = p_col + x;
 
-            for y in unroll(0, ksize) {
-                for x in unroll(0, ksize) {
-                    let h = p_row + y;
-                    let w = p_col + x;
+                        if h < 0 || w < 0 || h >= in_height || w >= in_width {
+                            bc(off + base_row + (base_col as i64)) = 0;
+                        } else {
+                            bc(off + base_row + (base_col as i64)) = img_acc.read(h, w, chn);
+                        }
 
-                    if h < 0 || w < 0 || h >= in_height || w >= in_width {
-                        bc(off + base_row + (base_col as i64)) = 0;
-                    } else {
-                        bc(off + base_row + (base_col as i64)) = img_acc.read(h, w, chn);
+                        base_row += img_s;
                     }
-
-                    base_row += img_s;
                 }
             }
-
         }
     }
 
@@ -212,13 +136,11 @@ fn @cat_conv(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernels:
     let out_height = (in_rows + 2 * padding - ksize) + 1;
 
     let im2col_mat = im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off);
-    let prod       = mkl_matmul(flattened_kernels, im2col_mat, buf, off_res);
+    let prod       = matmul(flattened_kernels, im2col_mat, buf, off_res);
 
     if use_bias {
-        for row in range(0, prod.rows) {
-            let offset = 4 * (prod.offset + (row * prod.cols) as i64);
-            mkl_add_constant(/*n*/ prod.cols, /*a*/ bitcast[&[f32]](&(prod.buf.data(offset))),
-                             /*val*/ biases(row), /*res*/ bitcast[&mut[f32]](&(prod.buf.data(offset))));    // 1 channel per row
+        for acc, v, row, col, chn in iterate_matrix_par(prod) {
+            acc.write(row, col, chn, v + biases(row));  // 1 channel per row
         }
     }
 
