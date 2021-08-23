@@ -16,6 +16,8 @@ set(NN_ART_SRCS
 set(NN_CPP_SRCS
     ../../src/driver/denoiser/nn_io.h
     ../../src/driver/denoiser/nn_io.cpp
+    ../../src/driver/denoiser/mkl_cblas.cpp
+    ../../src/driver/denoiser/cublas.cpp
     bench_interface.h
     bench_convolution.cpp
 )
@@ -28,9 +30,10 @@ anydsl_runtime_wrap(NN_OBJS
 
 set(BLA_VENDOR Intel10_64lp)
 
-find_package(LAPACK REQUIRED)
+find_package(LAPACK REQUIRED)   # oneAPI/MKL
+find_package(CUDA REQUIRED)     # CUBLAS
 
 add_executable(bench_convolution ${INTERFACE_OBJS} ${NN_OBJS} ${NN_CPP_SRCS})
-target_include_directories(bench_convolution PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(bench_convolution ${AnyDSL_runtime_LIBRARIES} ${LAPACK_LIBRARIES})
+target_include_directories(bench_convolution PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CUDA_INCLUDE_DIRS})
+target_link_libraries(bench_convolution ${AnyDSL_runtime_LIBRARIES} ${LAPACK_LIBRARIES} ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY})
 target_compile_definitions(bench_convolution PUBLIC BENCH_DUMP_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

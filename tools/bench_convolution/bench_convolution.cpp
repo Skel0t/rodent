@@ -6,10 +6,12 @@
 #include "bench_interface.h"
 #include "../../src/driver/denoiser/nn_io.h"
 
-void bench_sresDump();
+void bench_sresDump(int times = 1, int heatup_iterations = 0, bool correct_check = false);
 
 int main() {
-    bench_sresDump();
+    bench_sresDump(10, 0);
+    bench_sresDump(10, 5);
+    bench_sresDump(10, 10);
 
     return 0;
 }
@@ -19,7 +21,7 @@ int main() {
  *
  * Not including activation function
  */
-void bench_sresDump() {
+void bench_sresDump(int times, int heatup_iterations, bool correct_check) {
     // Constant values used in the dumped data
     const int in_channels  = 64;
     const int out_channels = 32;
@@ -28,11 +30,11 @@ void bench_sresDump() {
     const int height = 540;
     const int memsize_weights = ksize * ksize * in_channels * out_channels;
     const int memsize_biases  = out_channels;
-    const int size_im2col  = ksize * ksize * in_channels * width * height;  // size for im2col matrix
+    const int size_im2col = ksize * ksize * in_channels * width * height;  // size for im2col matrix
 
 
     // Buffer for weights and biases
-    anydsl::Array<float> weights((memsize_weights));
+    anydsl::Array<float> weights(memsize_weights);
     float* biases = (float*) malloc(sizeof(float) * (memsize_biases));
 
     // Buffer for dumped data
@@ -48,27 +50,40 @@ void bench_sresDump() {
     read_in_matrix_chw(in_mat.data(), BENCH_DUMP_DIR "/dumped_data/sres_matmul/conv4_in.txt", in_channels, height, width);
     read_in_matrix_chw(ref_mat.data(), BENCH_DUMP_DIR "/dumped_data/sres_matmul/conv4_out.txt", out_channels, height, width);
 
+    // Heat-Up iterations
+    for (int i = 0; i < heatup_iterations; i++) {
+        sres_dump(&in_mat, &weights, biases, &out_mat);
+    }
+
     // Time execution
     auto ticks = std::chrono::high_resolution_clock::now();
     sres_dump(&in_mat, &weights, biases, &out_mat);
     auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
-    std::cout << "Time:\t" << elapsed_ms << " ms" << std::endl;
 
-    // Check if result is correct
-    for (size_t chn = 0; chn < out_channels; chn++) {
-        for (size_t row = 0; row < height; row++) {
-            for (size_t col = 0; col < width; col++) {
-                if (abs(out_mat.data()[size_im2col + chn * width * height + row * width + col] - ref_mat.data()[chn * width * height + row * width + col]) > 1.0e-4) {
-                    std::cout << "Diff at:\t" << chn << "\t" << width << "\t" << height << "\t(chn, x, y)" << std::endl;
-                    std::cout << "Was:\t\t" << out_mat.data()[size_im2col + chn * width * height + row * width + col] << "\n"
-                        << "Should be:\t" << ref_mat.data()[chn * width * height + row * width + col] << std::endl;
-                    goto outer_break;
+    // Check if result is correct (only for the first time)
+    if (correct_check) {
+        for (size_t chn = 0; chn < out_channels; chn++) {
+            for (size_t row = 0; row < height; row++) {
+                for (size_t col = 0; col < width; col++) {
+                    if (abs(out_mat.data()[size_im2col + chn * width * height + row * width + col] - ref_mat.data()[chn * width * height + row * width + col]) > 1.0e-4) {
+                        std::cout << "Diff at:\t" << chn << "\t" << width << "\t" << height << "\t(chn, x, y)" << std::endl;
+                        std::cout << "Was:\t\t" << out_mat.data()[size_im2col + chn * width * height + row * width + col] << "\n"
+                            << "Should be:\t" << ref_mat.data()[chn * width * height + row * width + col] << std::endl;
+                        goto outer_break;
+                    }
                 }
             }
         }
+        std::cout << "Correct Calculation!" << std::endl;
     }
-    std::cout << "Correct Calculation!" << std::endl;
+
+    for (int i = 1; i < times; i++) {
+        ticks = std::chrono::high_resolution_clock::now();
+        sres_dump(&in_mat, &weights, biases, &out_mat);
+        elapsed_ms += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
+    }
 outer_break:
+    std::cout << "Average Time:\t" << (elapsed_ms / times) << " ms" << std::endl;
 
     in_mat.release();
     out_mat.release();

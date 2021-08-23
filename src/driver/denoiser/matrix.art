@@ -48,7 +48,7 @@ fn @get_cat_mat_acc(acc1: AccM, acc2: AccM, channels1: i32) -> AccM {
     }
 }
 
-fn @matmul(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
+fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, buf: Buffer, off: i64) -> Matrix {
     let mat = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     let a_acc = get_mat_acc(a);
     let b_acc = get_mat_acc(b);
@@ -63,8 +63,9 @@ fn @matmul(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
 
     for c in range_step(0, c_vec_len, c_size) {
         for r in range(0, mat.rows) {
+            let b = biases(r);
             vectorize(64, @|j| {
-                m(j) = 0;
+                m(j) = b;
                 for i in unroll(0, i_size) {
                     m(j) += a_acc.read(r, i, 0) * b_acc.read(i, c + j, 0);
                 }
@@ -129,13 +130,17 @@ fn @imin(a: i32, b: i32) -> i32 {
 }
 
 // Need to have same channel format
-fn @mkl_matmul(a: Matrix, b: Matrix, buf: Buffer, off: i64) {
+fn @mkl_matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, buf: Buffer, off: i64) {
     let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     mkl_blas_mm_mult(/*m*/ a.rows, /*n*/ b.cols, /*k*/ a.cols,
         /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))), /*lda*/ a.cols,
         /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))), /*ldb*/ b.cols,
         /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))), /*ldc*/ b.cols);
-        c
+
+    for acc, v, row, col, chn in iterate_matrix_par(c) {
+        acc.write(row, col, chn, v + biases(row));  // 1 channel per row
+    }
+    c
 }
 
 // Need to have same channel format
