@@ -64,8 +64,8 @@ set(DRIVER_SRCS
     driver/color.h
     driver/denoise.h
     driver/denoise.cpp
-    driver/denoiser/nn.h
-    driver/denoiser/nn.cpp
+    driver/denoiser/nn_io.h
+    driver/denoiser/nn_io.cpp
     driver/denoiser/mkl_cblas.cpp
     driver/denoiser/cublas.cpp)
 

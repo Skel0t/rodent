@@ -1,0 +1,16 @@
+#[export]
+fn @sres_dump(in_mat: &Buffer, flattened_kernels: &Buffer, biases: &[f32], out: &Buffer) -> () {
+    let height = 540;
+    let width  = 960;
+    let ksize = 5;
+    let in_channels = 64;
+    let out_channels = 32;
+
+    let size_im2col  = (ksize as i64) * (ksize as i64) * (in_channels as i64) * (width as i64) * (height as i64);  // size for im2col matrix
+
+    let mat = make_matrix(*in_mat, 0, MemoryFormat::CHW, in_channels, height, width);
+    let kernel = make_matrix(*flattened_kernels, 0, MemoryFormat::CHW, 1, out_channels, ksize * ksize * in_channels);
+    let biases_ho = @|i: i32| { biases(i) };
+
+    conv_with_im2col(ksize, out_channels, kernel, biases_ho, mat, true, *out, 0, size_im2col);
+}
