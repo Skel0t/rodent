@@ -33,15 +33,6 @@ fn @leaky_relu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     res
 }
 
-fn @mkl_relu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
-    let res = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows, img_mat.cols);
-
-    let n = img_mat.channels * img_mat.rows * img_mat.cols;
-
-    mkl_apply_relu(n, bitcast[&[f32]](&(img_mat.buf.data(4 * img_mat.offset))), bitcast[&mut[f32]](&(res.buf.data(4 * res.offset))));
-    res
-}
-
 fn @max(x: f32, y: f32) -> f32 {
     select(x > y, x, y)
 }
@@ -69,24 +60,6 @@ fn @nearest(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     }
 
     res_mat
-}
-
-fn @conv_with_im2col(ksize: i32, out_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32, img_mat: Matrix, use_bias: bool, buf: Buffer, off: i64, off_res: i64) -> Matrix {
-    // insize == outsize if padding == ksize / 2.0 - 1
-    let padding    = ksize / 2;
-    let out_width  = (img_mat.cols + 2 * padding - ksize) + 1;
-    let out_height = (img_mat.rows + 2 * padding - ksize) + 1;
-
-    let im2col_mat = im2col(ksize, out_width, out_height, img_mat.cols, img_mat.rows, img_mat.channels, get_mat_acc(img_mat), padding, buf, off);
-    let prod       = matmul(flattened_kernels, im2col_mat, buf, off_res);
-
-    if use_bias {
-        for acc, v, row, col, chn in iterate_matrix_par(prod) {
-            acc.write(row, col, chn, v + biases(row));  // 1 channel per row
-        }
-    }
-
-    make_matrix(buf, off_res, MemoryFormat::CHW, out_channels, out_height, out_width)
 }
 
 // TODO: Change f32's to own type and use sizeof[type]() instead of 4
@@ -129,20 +102,22 @@ fn @im2col(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_height
     res_mat
 }
 
-fn @cat_conv(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32, in_rows: i32, in_cols: i32, img_acc: AccM, use_bias: bool, buf: Buffer, off: i64, off_res: i64) -> Matrix {
+/**
+ * Wrapper to allow simple matrix convoloution call without concatenation
+ */
+fn @conv2d(ksize: i32, out_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32, img_mat: Matrix, buf: Buffer, off: i64, off_res: i64) -> Matrix {
+    cat_conv2d(ksize, out_channels, img_mat.channels, flattened_kernels, biases, img_mat.rows, img_mat.cols, get_mat_acc(img_mat), buf, off, off_res)
+}
+
+fn @cat_conv2d(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32, in_rows: i32, in_cols: i32, img_acc: AccM, buf: Buffer, off: i64, off_res: i64) -> Matrix {
     // insize == outsize if padding == ksize / 2.0 - 1
     let padding    = ksize / 2;
     let out_width  = (in_cols + 2 * padding - ksize) + 1;
     let out_height = (in_rows + 2 * padding - ksize) + 1;
 
     let im2col_mat = im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off);
-    let prod       = matmul(flattened_kernels, im2col_mat, buf, off_res);
+    let prod       = mkl_matmul(flattened_kernels, im2col_mat, biases, buf, off_res);
 
-    if use_bias {
-        for acc, v, row, col, chn in iterate_matrix_par(prod) {
-            acc.write(row, col, chn, v + biases(row));  // 1 channel per row
-        }
-    }
-
-    make_matrix(buf, off_res, MemoryFormat::CHW, out_channels, out_height, out_width)
+    // Reshape matrix for future use, no values are changed
+    make_matrix(prod.buf, prod.offset, MemoryFormat::CHW, out_channels, out_height, out_width)
 }
