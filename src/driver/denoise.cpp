@@ -26,7 +26,7 @@ void read_in(anydsl::Array<float>* weights, float** biases, std::string network_
                                 memsize9  + memsize10 + memsize11 + memsize12 + memsize13 + memsize14 + memsize15 + memsize16);
 
     // Buffer for all convolution weights
-    *weights = anydsl::Array<float>(sizeof(float) * memsize_weights);
+    *weights = anydsl::Array<float>(memsize_weights);
 
     *biases = (float*) malloc(sizeof(float) * (memsize_biases));
 

@@ -116,7 +116,7 @@ fn @cat_conv2d(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernel
     let out_height = (in_rows + 2 * padding - ksize) + 1;
 
     let im2col_mat = im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off);
-    let prod       = mkl_matmul(flattened_kernels, im2col_mat, biases, buf, off_res);
+    let prod       = matmul(flattened_kernels, im2col_mat, biases, buf, off_res);
 
     // Reshape matrix for future use, no values are changed
     make_matrix(prod.buf, prod.offset, MemoryFormat::CHW, out_channels, out_height, out_width)

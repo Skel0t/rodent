@@ -14,3 +14,8 @@ fn @sres_dump(in_mat: &Buffer, flattened_kernels: &Buffer, biases: &[f32], out: 
 
     conv2d(ksize, out_channels, kernel, biases_ho, mat, *out, 0, size_im2col);
 }
+
+// #[export]
+// fn @forwarding_denoise_dumo(img_mat: &Buffer, alb_mat: &Buffer, nrm_mat: &Buffer, nn_mem: &Buffer, flattened_kernels: &Buffer, biases: &[f32], out: &Buffer) -> () {
+//     forward_denoise(img_mat, alb_mat, nrm_mat, nn_mem, 512, 512, out, flattened_kernels, biases);
+// }

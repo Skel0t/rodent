@@ -93,3 +93,20 @@ void read_in_matrix_chw(float* buffer, std::string path, int channels, int rows,
         }
     }
 }
+
+void read_in_matrix_hwc(float* buffer, std::string path, int channels, int rows, int cols) {
+    std::fstream f;
+    f.open(path, std::ios::in);
+    if (!f) {
+        std::cout << "Couldn't open " << path << std::endl;
+        throw std::invalid_argument(path);
+    } else {
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                for (int chn = 0; chn < channels; chn++) {
+                    f >> buffer[row * cols * channels + col * channels + chn];
+                }
+            }
+        }
+    }
+}
