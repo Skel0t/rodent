@@ -15,24 +15,6 @@ fn @max_pool_2(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     res_mat
 }
 
-fn @leaky_relu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
-    fn @leaky_relu_x(neg_slope: f32, x: f32) -> f32 {
-        if x >= 0.0 {
-            x
-        } else {
-            neg_slope * x
-        }
-    }
-
-    let res = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows, img_mat.cols);
-    let m_acc = get_mat_acc(img_mat);
-
-    for r_acc, _v, r, c, chn in iterate_matrix_par(res) {
-        r_acc.write(r, c, chn, leaky_relu_x(0.01, m_acc.read(r, c, chn)));
-    }
-    res
-}
-
 fn @max(x: f32, y: f32) -> f32 {
     select(x > y, x, y)
 }
@@ -105,19 +87,42 @@ fn @im2col(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_height
 /**
  * Wrapper to allow simple matrix convoloution call without concatenation
  */
-fn @conv2d(ksize: i32, out_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32, img_mat: Matrix, buf: Buffer, off: i64, off_res: i64) -> Matrix {
-    cat_conv2d(ksize, out_channels, img_mat.channels, flattened_kernels, biases, img_mat.rows, img_mat.cols, get_mat_acc(img_mat), buf, off, off_res)
+fn @conv2d(ksize: i32, out_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, img_mat: Matrix, buf: Buffer, off: i64, off_res: i64) -> Matrix {
+    cat_conv2d(ksize, out_channels, img_mat.channels, flattened_kernels, biases, act_fn, img_mat.rows, img_mat.cols, get_mat_acc(img_mat), buf, off, off_res)
 }
 
-fn @cat_conv2d(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32, in_rows: i32, in_cols: i32, img_acc: AccM, buf: Buffer, off: i64, off_res: i64) -> Matrix {
+fn @cat_conv2d(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, in_rows: i32, in_cols: i32, img_acc: AccM, buf: Buffer, off: i64, off_res: i64) -> Matrix {
     // insize == outsize if padding == ksize / 2.0 - 1
     let padding    = ksize / 2;
     let out_width  = (in_cols + 2 * padding - ksize) + 1;
     let out_height = (in_rows + 2 * padding - ksize) + 1;
 
     let im2col_mat = im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off);
-    let prod       = matmul(flattened_kernels, im2col_mat, biases, buf, off_res);
+    let prod       = matmul(flattened_kernels, im2col_mat, biases, act_fn, buf, off_res);
 
     // Reshape matrix for future use, no values are changed
     make_matrix(prod.buf, prod.offset, MemoryFormat::CHW, out_channels, out_height, out_width)
+}
+
+fn @leaky_relu_x(x: f32) -> f32 {
+    let neg_slope = 0.01 as f32;
+    if x >= 0.0 {
+        x
+    } else {
+        neg_slope * x
+    }
+}
+
+fn @leaky_relu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
+    let res = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows, img_mat.cols);
+    let m_acc = get_mat_acc(img_mat);
+
+    for r_acc, _v, r, c, chn in iterate_matrix_par(res) {
+        r_acc.write(r, c, chn, leaky_relu_x(m_acc.read(r, c, chn)));
+    }
+    res
+}
+
+fn @id(x: f32) -> f32 {
+    x
 }

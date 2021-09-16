@@ -11,13 +11,21 @@ void bench_sresDump(int times = 1, int heatup_iterations = 0, bool correct_check
 void bench_denoiseDump(int times = 1, int heatup_iterations = 0, bool correct_check = false);
 
 int main() {
-    bench_denoiseDump(100, 5);
+    bench_denoiseDump(1, 0, true);
 
     // bench_sresDump(10, 0);
     // bench_sresDump(10, 5);
     // bench_sresDump(10, 10);
 
     return 0;
+}
+
+void sres_dump_wrap(anydsl::Array<float>* in_mat, anydsl::Array<float>* weights, float* biases, anydsl::Array<float>* out_mat) {
+    Buffer in_mat_buf  = { (char*) in_mat->data(),   in_mat->size(),   in_mat->device()   };
+    Buffer weights_buf = { (char*) weights->data(),  weights->size(),  weights->device()  };
+    Buffer out_mat_buf = { (char*) out_mat->data(),  out_mat->size(),  out_mat->device()  };
+
+    sres_dump(&in_mat_buf, &weights_buf, biases, &out_mat_buf);
 }
 
 /**
@@ -56,12 +64,12 @@ void bench_sresDump(int times, int heatup_iterations, bool correct_check) {
 
     // Heat-Up iterations
     for (int i = 0; i < heatup_iterations; i++) {
-        sres_dump(&in_mat, &weights, biases, &out_mat);
+        sres_dump_wrap(&in_mat, &weights, biases, &out_mat);
     }
 
     // Time execution
     auto ticks = std::chrono::high_resolution_clock::now();
-    sres_dump(&in_mat, &weights, biases, &out_mat);
+    sres_dump_wrap(&in_mat, &weights, biases, &out_mat);
     auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
 
     // Check if result is correct (only for the first time)
@@ -83,7 +91,7 @@ void bench_sresDump(int times, int heatup_iterations, bool correct_check) {
 
     for (int i = 1; i < times; i++) {
         ticks = std::chrono::high_resolution_clock::now();
-        sres_dump(&in_mat, &weights, biases, &out_mat);
+        sres_dump_wrap(&in_mat, &weights, biases, &out_mat);
         elapsed_ms += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
     }
 outer_break:
