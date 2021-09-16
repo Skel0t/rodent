@@ -48,7 +48,7 @@ fn @get_cat_mat_acc(acc1: AccM, acc2: AccM, channels1: i32) -> AccM {
     }
 }
 
-fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, buf: Buffer, off: i64) -> Matrix {
+fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) -> Matrix {
     let mat = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     let a_acc = get_mat_acc(a);
     let b_acc = get_mat_acc(b);
@@ -60,8 +60,11 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, buf: Buffer, off: i64) 
     let mut m : [f32 * 64];
 
     let c_vec_len = round_down(mat.cols, c_size);
+    let i_vec_len = round_down(a.cols, i_size);
 
+    // Vectorize over mat.cols with c_size vectors
     for c in range_step(0, c_vec_len, c_size) {
+        // ii loop for ii = 0
         for r in range(0, mat.rows) {
             let b = biases(r);
             vectorize(64, @|j| {
@@ -73,8 +76,7 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, buf: Buffer, off: i64) 
             });
         }
 
-        let i_vec_len = round_down(a.cols, i_size);
-
+        // ii loop for ii > 0 and last multiple of i_size < ii
         for ii in range_step(i_size, i_vec_len, i_size) {
             for r in range(0, mat.rows) {
                 vectorize(64, @|j| {
@@ -87,20 +89,32 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, buf: Buffer, off: i64) 
                 });
             }
         }
+
+        // ii loop for ii > (last multiple of i_size < ii)
         for r in range(0, mat.rows) {
             for c_inner in range(c, imin(c + c_size, mat.cols)) {
                 m(0) = m_acc.read(r, c_inner, 0);
                 for i in range(i_vec_len, a.cols) {
                     m(0) += a_acc.read(r, i, 0) * b_acc.read(i, c_inner, 0);
                 }
-                m_acc.write(r, c_inner, 0, m(0));
+                m_acc.write(r, c_inner, 0, act_fn(m(0)));
             }
         }
     }
+
+    // Do the remaining part without vectorization
     for c in range(c_vec_len, mat.cols) {
+        // ii loop for ii = 0
+        for r in range(0, mat.rows) {
+            m(0) = biases(r);
+            for i_loop in unroll(0, i_size) {
+                let i = i_loop;
+                m(0) += a_acc.read(r, i, 0) * b_acc.read(i, c, 0);
+            }
+            m_acc.write(r, c, 0, m(0));
+        }
 
-        let i_vec_len = round_down(a.cols, i_size);
-
+        // ii loop for ii > 0 and last multiple of i_size < ii
         for ii in range_step(i_size, i_vec_len, i_size) {
             for r in range(0, mat.rows) {
                 m(0) = m_acc.read(r, c, 0);
@@ -111,14 +125,14 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, buf: Buffer, off: i64) 
                 m_acc.write(r, c, 0, m(0));
             }
         }
+
+        // ii loop for ii > (last multiple of i_size < ii)
         for r in range(0, mat.rows) {
-            for c_inner in range(c, imin(c + c_size, mat.cols)) {
-                m(0) = m_acc.read(r, c_inner, 0);
-                for i in range(i_vec_len, a.cols) {
-                    m(0) += a_acc.read(r, i, 0) * b_acc.read(i, c_inner, 0);
-                }
-                m_acc.write(r, c_inner, 0, m(0));
+            m(0) = m_acc.read(r, c, 0);
+            for i in range(i_vec_len, a.cols) {
+                m(0) += a_acc.read(r, i, 0) * b_acc.read(i, c, 0);
             }
+            m_acc.write(r, c, 0, act_fn(m(0)));
         }
     }
 
@@ -184,4 +198,22 @@ fn @add_element_wise(mat1: Matrix, mat2: Matrix, buf: Buffer, off: i64) -> Matri
         res_acc.write(r, c, chn, mat2_acc.read(r, c, chn) + v);
     }
     res
+}
+
+fn @print_matrix_chw(mat: Matrix) -> () {
+    for _acc, val, _r, c, _chn in iterate_matrix_chw(mat) {
+        print_f32(val); print_string("\t");
+        if c == mat.cols - 1 {
+            print_string("\n");
+        }
+    }
+}
+
+fn @print_matrix_hwc(mat: Matrix) -> () {
+    for _acc, val, _r, c, chn in iterate_matrix_hwc(mat) {
+        print_f32(val); print_string("\t");
+        if c == mat.cols - 1 && chn == mat.channels - 1 {
+            print_string("\n");
+        }
+    }
 }
