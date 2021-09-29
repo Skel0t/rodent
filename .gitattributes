@@ -1,3 +1,13 @@
+tools/bench_convolution/dumped_data/denoising_fw/alb_mat.txt filter=lfs diff=lfs merge=lfs -text
+tools/bench_convolution/dumped_data/denoising_fw/img_mat.txt filter=lfs diff=lfs merge=lfs -text
+tools/bench_convolution/dumped_data/denoising_fw/ref_mat.txt filter=lfs diff=lfs merge=lfs -text
+tools/bench_convolution/dumped_data/im2col/in_mat.txt filter=lfs diff=lfs merge=lfs -text
+tools/bench_convolution/dumped_data/im2col/out_mat.txt filter=lfs diff=lfs merge=lfs -text
+tools/bench_convolution/dumped_data/sres_matmul/conv4_in.txt filter=lfs diff=lfs merge=lfs -text
+tools/bench_convolution/dumped_data/denoising_fw/nrm_mat.txt filter=lfs diff=lfs merge=lfs -text
+tools/bench_convolution/dumped_data/sres_matmul/conv4_out.txt filter=lfs diff=lfs merge=lfs -text
+tools/bench_convolution/dumped_data/sres_matmul/uc1bias.txt filter=lfs diff=lfs merge=lfs -text
+tools/bench_convolution/dumped_data/sres_matmul/upconv1.txt filter=lfs diff=lfs merge=lfs -text
 ./tools/bench_convolution/dumped_data/*/*.txt filter=lfs diff=lfs merge=lfs -text
 *.txt filter=lfs diff=lfs merge=lfs -text
 *.txt !text !filter !merge !diff
