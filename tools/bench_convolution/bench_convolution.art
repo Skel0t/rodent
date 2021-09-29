@@ -15,6 +15,25 @@ fn @sres_dump(in_mat: &Buffer, flattened_kernels: &Buffer, biases: &[f32], out: 
     conv2d(ksize, out_channels, kernel, biases_ho, id, mat, *out, 0, size_im2col);
 }
 
+#[export]
+fn @im2col_dump(in_buf: &Buffer, out_buf: &Buffer) -> () {
+    let ksize = 3;
+    let out_channels = 70;
+    let in_channels = 70;
+    let in_cols = 32;
+    let in_rows = 32;
+
+    let padding    = ksize / 2;
+    let out_width  = (in_cols + 2 * padding - ksize) + 1;
+    let out_height = (in_rows + 2 * padding - ksize) + 1;
+
+    let in_mat = make_matrix(*in_buf, 0, MemoryFormat::CHW, in_channels, in_rows, in_cols);
+    let acc = get_mat_acc(in_mat);
+    let off = 0 as i64;
+
+    im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, acc, padding, *out_buf, off);
+}
+
 // #[export]
 // fn @forwarding_denoise_dumo(img_mat: &Buffer, alb_mat: &Buffer, nrm_mat: &Buffer, nn_mem: &Buffer, flattened_kernels: &Buffer, biases: &[f32], out: &Buffer) -> () {
 //     forward_denoise(img_mat, alb_mat, nrm_mat, nn_mem, 512, 512, out, flattened_kernels, biases);

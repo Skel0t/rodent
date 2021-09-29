@@ -146,14 +146,6 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
         let alb_mat  = make_matrix(albedo, 0, MemoryFormat::HWC, 3, height, width);
         let nrm_mat  = make_matrix(normal, 0, MemoryFormat::HWC, 3, height, width);
 
-        // print_string("img_mat:\n");
-        // print_matrix_hwc(img_mat);
-        // print_string("\nalb_mat:\n");
-        // print_matrix_hwc(alb_mat);
-        // print_string("\nnrm_mat:\n");
-        // print_matrix_hwc(nrm_mat);
-        // print_string("\n\n");
-
         let img_acc = get_mat_acc(img_mat);
         let alb_acc = get_mat_acc(alb_mat);
         let nrm_acc = get_mat_acc(nrm_mat);
@@ -192,42 +184,39 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
         img_mat = conv2d(ksize, out_channels_7, flattened_kernels(7), biases(7), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
         // Convolution 8
-        img_mat = nearest(img_mat, mem, 0);             // This swaps mem locations of img_mat and im2col_mat
-        let cat_acc_1 = get_cat_mat_acc(get_mat_acc(img_mat), pool_3, img_mat.channels);
-        img_mat = cat_conv2d(ksize, out_channels_8, in_channels_8, flattened_kernels(8), biases(8), leaky_relu_x, img_mat.rows, img_mat.cols, cat_acc_1, mem, size_img, 0);
+        let mat_acc_1 = nearest_acc(img_mat);             // This swaps mem locations of img_mat and im2col_mat
+        let cat_acc_1 = get_cat_mat_acc(mat_acc_1, pool_3, img_mat.channels);
+        img_mat = cat_conv2d(ksize, out_channels_8, in_channels_8, flattened_kernels(8), biases(8), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_1, mem, 0, size_im2col);
 
         // Convolution 9
-        img_mat = conv2d(ksize, out_channels_9, flattened_kernels(9), biases(9), leaky_relu_x, img_mat, mem, size_img, 0);
+        img_mat = conv2d(ksize, out_channels_9, flattened_kernels(9), biases(9), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
         // Convolution 10
-        img_mat = nearest(img_mat, mem, size_im2col);   // This swaps mem locations of img_mat and im2col_mat
-        let cat_acc_2 = get_cat_mat_acc(get_mat_acc(img_mat), pool_2, img_mat.channels);
-        img_mat = cat_conv2d(ksize, out_channels_10, in_channels_10, flattened_kernels(10), biases(10), leaky_relu_x, img_mat.rows, img_mat.cols, cat_acc_2, mem, 0, size_im2col);
+        let mat_acc_2 = nearest_acc(img_mat);   // This swaps mem locations of img_mat and im2col_mat
+        let cat_acc_2 = get_cat_mat_acc(mat_acc_2, pool_2, img_mat.channels);
+        img_mat = cat_conv2d(ksize, out_channels_10, in_channels_10, flattened_kernels(10), biases(10), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_2, mem, 0, size_im2col);
 
         // Convolution 11
         img_mat = conv2d(ksize, out_channels_11, flattened_kernels(11), biases(11), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
         // Convolution 12
-        img_mat = nearest(img_mat, mem, 0);             // This swaps mem locations of img_mat and im2col_mat
-        let cat_acc_3 = get_cat_mat_acc(get_mat_acc(img_mat), pool_1, img_mat.channels);
-        img_mat = cat_conv2d(ksize, out_channels_12, in_channels_12, flattened_kernels(12), biases(12), leaky_relu_x, img_mat.rows, img_mat.cols, cat_acc_3, mem, size_img, 0);
+        let mat_acc_3 = nearest_acc(img_mat);             // This swaps mem locations of img_mat and im2col_mat
+        let cat_acc_3 = get_cat_mat_acc(mat_acc_3, pool_1, img_mat.channels);
+        img_mat = cat_conv2d(ksize, out_channels_12, in_channels_12, flattened_kernels(12), biases(12), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_3, mem, 0, size_im2col);
 
         // Convolution 13
-        img_mat = conv2d(ksize, out_channels_13, flattened_kernels(13), biases(13), leaky_relu_x, img_mat, mem, size_img, 0);
+        img_mat = conv2d(ksize, out_channels_13, flattened_kernels(13), biases(13), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
         // Convolution 14
-        img_mat = nearest(img_mat, mem, size_im2col);   // This swaps mem locations of img_mat and im2col_mat
-        let cat_acc_4 = get_cat_mat_acc(get_mat_acc(img_mat), cat_acc, img_mat.channels);
-        img_mat = cat_conv2d(ksize, out_channels_14, in_channels_14, flattened_kernels(14), biases(14), leaky_relu_x, img_mat.rows, img_mat.cols, cat_acc_4, mem, 0, size_im2col);
+        let mat_acc_4 = nearest_acc(img_mat);   // This swaps mem locations of img_mat and im2col_mat
+        let cat_acc_4 = get_cat_mat_acc(mat_acc_4, cat_acc, img_mat.channels);
+        img_mat = cat_conv2d(ksize, out_channels_14, in_channels_14, flattened_kernels(14), biases(14), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_4, mem, 0, size_im2col);
 
         // Convolution 15
         img_mat = conv2d(ksize, out_channels_15, flattened_kernels(15), biases(15), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
         // Convolution 16
         img_mat = conv2d(ksize, out_channels_16, flattened_kernels(16), biases(16), id, img_mat, mem, 0, size_im2col);
-
-        // print_string("end result:\n");
-        // print_matrix_chw(img_mat);
 
         // Write result in output buffer (necessary since rodent expects hwc while conv2d returns chw format)
         chw_to_hwc(img_mat, out_buf, 0);

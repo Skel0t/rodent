@@ -9,9 +9,12 @@
 
 void bench_sresDump(int times = 1, int heatup_iterations = 0, bool correct_check = false);
 void bench_denoiseDump(int times = 1, int heatup_iterations = 0, bool correct_check = false);
+void bench_im2col(bool correct_check = false);
 
 int main() {
-    bench_denoiseDump(1, 0, true);
+    bench_im2col(true);
+
+    // bench_denoiseDump(1, 0, true);
 
     // bench_sresDump(10, 0);
     // bench_sresDump(10, 5);
@@ -179,4 +182,52 @@ outer_break:
     ref_mat.release();
     weights.release();
     free(biases);
+}
+
+void im2col_wrap(anydsl::Array<float>* in_mat, anydsl::Array<float>* out_mat) {
+    Buffer in_mat_buf  = { (char*) in_mat->data(),   in_mat->size(),   in_mat->device()   };
+    Buffer out_mat_buf = { (char*) out_mat->data(),  out_mat->size(),  out_mat->device()  };
+
+    im2col_dump(&in_mat_buf, &out_mat_buf);
+}
+
+void bench_im2col(bool correct_check) {
+    const int ksize  = 3;
+    const int width  = 32;
+    const int height = 32;
+    const int in_channels  = 70;
+    const int out_channels = 70;
+
+    anydsl::Array<float> in_mat(width * height * in_channels);
+    anydsl::Array<float> out_mat(width * height * ksize * ksize * in_channels);
+    anydsl::Array<float> ref_mat(width * height * ksize * ksize * in_channels);
+
+    read_in_matrix_chw(in_mat.data(), BENCH_DUMP_DIR "/dumped_data/im2col/in_mat.txt", in_channels, height, width);
+    read_in_matrix_chw(ref_mat.data(), BENCH_DUMP_DIR "/dumped_data/im2col/out_mat.txt", 1, in_channels * ksize * ksize, height * width);
+
+    // Time execution
+    auto ticks = std::chrono::high_resolution_clock::now();
+    im2col_wrap(&in_mat, &out_mat);
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
+
+    // Check if result is correct (only for the first time)
+    if (correct_check) {
+        for (size_t row = 0; row < height; row++) {
+            for (size_t col = 0; col < width; col++) {
+                if (abs(out_mat.data()[row * width + col] - ref_mat.data()[row * width + col]) > 1.0e-4) {
+                    std::cout << "Diff at:\t" << col << "\t" << row << "\t(x, y)" << std::endl;
+                    std::cout << "Was:\t\t" << out_mat.data()[row * width + col] << "\n"
+                        << "Should be:\t" << ref_mat.data()[row * width + col] << std::endl;
+                    goto outer_break;
+                }
+            }
+        }
+        std::cout << "Correct Calculation!" << std::endl;
+    }
+    outer_break:
+    std::cout << "Average Time:\t" << (elapsed_ms) << " ms" << std::endl;
+
+    in_mat.release();
+    ref_mat.release();
+    out_mat.release();
 }
