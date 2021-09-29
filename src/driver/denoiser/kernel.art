@@ -44,6 +44,15 @@ fn @nearest(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     res_mat
 }
 
+fn @nearest_acc(img_mat: Matrix) -> AccM {
+    let acc = get_mat_acc(img_mat);
+
+    AccM { // THIS IS WRONG?!
+        read  = @|row, col, chn|      { acc.read(row / 2, col / 2, chn) },
+        write = @|row, col, chn, val| { acc.write(row / 2, col / 2, chn, val) }
+    }
+}
+
 // TODO: Change f32's to own type and use sizeof[type]() instead of 4
 // Only supporting stride of 1
 fn @im2col(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_height: i32, channels: i32, img_acc: AccM, padding: i32, buf: Buffer, off: i64) -> Matrix {
