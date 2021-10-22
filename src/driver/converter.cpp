@@ -65,7 +65,7 @@ void copy_file(const std::string& src, const std::string& dst) {
         create_directory(dst.substr(0, j).c_str());
         i = j + 1;
     }
-    info("Copying '", src, "' to '", dst, "'");
+    //info("Copying '", src, "' to '", dst, "'");
     std::ifstream is(src, std::ios::binary);
     std::ofstream os(dst, std::ios::binary);
     assert(is && os);

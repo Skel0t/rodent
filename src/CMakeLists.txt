@@ -7,6 +7,7 @@ set(MAX_PATH_LEN "64" CACHE STRING "Maximum path length")
 set(DISABLE_GUI OFF CACHE BOOL "Set to true to disable GUI")
 set(SPP "4" CACHE STRING "Samples per pixel")
 set(OIDN OFF CACHE BOOL "Set to true to enable OIDN support")
+set(TRAIN OFF CACHE BOOL "Set to true to enable training data output")
 if (SCENE_FILE STREQUAL "")
     message(FATAL_ERROR "Please specify a valid OBJ scene in the SCENE_FILE variable")
 endif()
@@ -139,6 +140,8 @@ if (OIDN)
     target_include_directories(rodent PUBLIC ${OPENIMAGEDENOISE_INCLUDE_DIR})
     target_link_libraries(rodent driver  ${_openimagedenoise_LIBRARIES})
 endif()
+
+target_compile_definitions(driver PUBLIC -DTRAIN)
 
 target_link_libraries(rodent driver ${AnyDSL_runtime_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${TBB_LIBRARIES} ${LZ4_LIBRARY})
 
