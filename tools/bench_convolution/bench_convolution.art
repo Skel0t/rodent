@@ -13,6 +13,21 @@ fn @sres_dump(in_mat: &Buffer, flattened_kernels: &Buffer, biases: &[f32], out: 
     let biases_ho = @|i: i32| { biases(i) };
 
     conv2d(ksize, out_channels, kernel, biases_ho, id, mat, *out, 0, size_im2col);
+
+    if cpu_profiling_enabled {
+        let total_counter = matmul_counter + im2col_counter;
+        fn @print_counter(counter: i64, name: &[u8]) -> () {
+            print_string(name);
+            print_string(": ");
+            print_i64(counter);
+            print_string(" (");
+            print_i64(counter * 100 / total_counter);
+            print_string("%)\n");
+        }
+        print_counter(im2col_counter, "im2col");
+        print_counter(matmul_counter, "matmul");
+        print_string("\n");
+    }
 }
 
 #[export]

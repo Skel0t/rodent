@@ -7,17 +7,31 @@
 #include "../../src/driver/denoiser/nn_io.h"
 #include "../../src/driver/denoise.h"
 
+#if defined(__x86_64__) || defined(__amd64__) || defined(_M_X64)
+#include <x86intrin.h>
+#endif
+
 void bench_sresDump(int times = 1, int heatup_iterations = 0, bool correct_check = false);
 void bench_denoiseDump(int times = 1, int heatup_iterations = 0, bool correct_check = false);
 void bench_im2col(bool correct_check = false);
 
-int main() {
-    bench_im2col(true);
+int64_t clock_us() {
+#if defined(__x86_64__) || defined(__amd64__) || defined(_M_X64)
+#define CPU_FREQ 4e9
+    __asm__ __volatile__("xorl %%eax,%%eax \n    cpuid" ::: "%rax", "%rbx", "%rcx", "%rdx");
+    return __rdtsc() * int64_t(1000000) / int64_t(CPU_FREQ);
+#else
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+#endif
+}
 
-    // bench_denoiseDump(1, 0, true);
+int main() {
+    // bench_im2col(true);
+
+    bench_denoiseDump(30, 10, false);
 
     // bench_sresDump(10, 0);
-    // bench_sresDump(10, 5);
+    // bench_sresDump(10, 10);
     // bench_sresDump(10, 10);
 
     return 0;
