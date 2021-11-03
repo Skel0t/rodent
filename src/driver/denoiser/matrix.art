@@ -144,7 +144,7 @@ fn @imin(a: i32, b: i32) -> i32 {
 }
 
 // Need to have same channel format
-fn @mkl_matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, buf: Buffer, off: i64) {
+fn @mkl_matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
     let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     mkl_blas_mm_mult(/*m*/ a.rows, /*n*/ b.cols, /*k*/ a.cols,
         /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))), /*lda*/ a.cols,
@@ -152,7 +152,7 @@ fn @mkl_matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, buf: Buffer, off: i
         /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))), /*ldc*/ b.cols);
 
     for acc, v, row, col, chn in iterate_matrix_par(c) {
-        acc.write(row, col, chn, v + biases(row));  // 1 channel per row
+        acc.write(row, col, chn, act_fn(v + biases(row)));  // 1 channel per row
     }
     c
 }
