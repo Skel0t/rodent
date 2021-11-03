@@ -93,6 +93,9 @@ fn @im2col(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_height
     res_mat
 }
 
+static mut im2col_counter = 0 as i64;
+static mut matmul_counter = 0 as i64;
+
 /**
  * Wrapper to allow simple matrix convoloution call without concatenation
  */
@@ -106,8 +109,14 @@ fn @cat_conv2d(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernel
     let out_width  = (in_cols + 2 * padding - ksize) + 1;
     let out_height = (in_rows + 2 * padding - ksize) + 1;
 
-    let im2col_mat = im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off);
-    let prod       = matmul(flattened_kernels, im2col_mat, biases, act_fn, buf, off_res);
+    let mut im2col_mat : Matrix;
+    let mut prod : Matrix;
+    cpu_profile(&mut im2col_counter, @||
+        { im2col_mat = im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off); }
+    );
+    cpu_profile(&mut matmul_counter, @||
+        { prod       = matmul(flattened_kernels, im2col_mat, biases, act_fn, buf, off_res); }
+    );
 
     // Reshape matrix for future use, no values are changed
     make_matrix(prod.buf, prod.offset, MemoryFormat::CHW, out_channels, out_height, out_width)

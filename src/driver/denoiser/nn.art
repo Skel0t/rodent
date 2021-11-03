@@ -142,84 +142,108 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
     let necess_mem = 4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3);
 
     fn @forward_denoise(img: Buffer, albedo: Buffer, normal: Buffer, mem: Buffer, out_buf: Buffer) -> () {
-        let mut img_mat = make_matrix(img, 0, MemoryFormat::HWC, 3, height, width);
-        let alb_mat  = make_matrix(albedo, 0, MemoryFormat::HWC, 3, height, width);
-        let nrm_mat  = make_matrix(normal, 0, MemoryFormat::HWC, 3, height, width);
+        let mut total_counter = 0 as i64;
+        if cpu_profiling_enabled {
+            im2col_counter = 0;
+            matmul_counter = 0;
+        }
 
-        let img_acc = get_mat_acc(img_mat);
-        let alb_acc = get_mat_acc(alb_mat);
-        let nrm_acc = get_mat_acc(nrm_mat);
+        cpu_profile(&mut total_counter, || {
+            let mut img_mat = make_matrix(img, 0, MemoryFormat::HWC, 3, height, width);
+            let alb_mat  = make_matrix(albedo, 0, MemoryFormat::HWC, 3, height, width);
+            let nrm_mat  = make_matrix(normal, 0, MemoryFormat::HWC, 3, height, width);
 
-        let cat_acc = get_cat_mat_acc(get_cat_mat_acc(img_acc, alb_acc, img_mat.channels), nrm_acc, img_mat.channels + alb_mat.channels);
+            let img_acc = get_mat_acc(img_mat);
+            let alb_acc = get_mat_acc(alb_mat);
+            let nrm_acc = get_mat_acc(nrm_mat);
 
-        // Convolution 1
-        img_mat = cat_conv2d(ksize, out_channels_1, in_channels_1, flattened_kernels(1), biases(1), leaky_relu_x, img_mat.rows, img_mat.cols, cat_acc, mem, 0, size_im2col);
+            let cat_acc = get_cat_mat_acc(get_cat_mat_acc(img_acc, alb_acc, img_mat.channels), nrm_acc, img_mat.channels + alb_mat.channels);
 
-        // Convolution 2
-        img_mat = conv2d(ksize, out_channels_2, flattened_kernels(2), biases(2), leaky_relu_x, img_mat, mem, 0, size_im2col);
-        img_mat = max_pool_2(img_mat, mem, size_im2col + size_img);    // POOL 1
+            // Convolution 1
+            img_mat = cat_conv2d(ksize, out_channels_1, in_channels_1, flattened_kernels(1), biases(1), leaky_relu_x, img_mat.rows, img_mat.cols, cat_acc, mem, 0, size_im2col);
 
-        let pool_1 = get_mat_acc(img_mat);
+            // Convolution 2
+            img_mat = conv2d(ksize, out_channels_2, flattened_kernels(2), biases(2), leaky_relu_x, img_mat, mem, 0, size_im2col);
+            img_mat = max_pool_2(img_mat, mem, size_im2col + size_img);    // POOL 1
 
-        // Convolution 3
-        img_mat = conv2d(ksize, out_channels_3, flattened_kernels(3), biases(3), leaky_relu_x, img_mat, mem, 0, size_im2col);
-        img_mat = max_pool_2(img_mat, mem, size_im2col + size_img + size_pool_1);    // POOL 2
+            let pool_1 = get_mat_acc(img_mat);
 
-        let pool_2 = get_mat_acc(img_mat);
+            // Convolution 3
+            img_mat = conv2d(ksize, out_channels_3, flattened_kernels(3), biases(3), leaky_relu_x, img_mat, mem, 0, size_im2col);
+            img_mat = max_pool_2(img_mat, mem, size_im2col + size_img + size_pool_1);    // POOL 2
 
-        // Convolution 4
-        img_mat = conv2d(ksize, out_channels_4, flattened_kernels(4), biases(4), leaky_relu_x, img_mat, mem, 0, size_im2col);
-        img_mat = max_pool_2(img_mat, mem, size_im2col + size_img + size_pool_1 + size_pool_2);    // POOL 3
+            let pool_2 = get_mat_acc(img_mat);
 
-        let pool_3 = get_mat_acc(img_mat);
+            // Convolution 4
+            img_mat = conv2d(ksize, out_channels_4, flattened_kernels(4), biases(4), leaky_relu_x, img_mat, mem, 0, size_im2col);
+            img_mat = max_pool_2(img_mat, mem, size_im2col + size_img + size_pool_1 + size_pool_2);    // POOL 3
 
-        // Convolution 5
-        img_mat = conv2d(ksize, out_channels_5, flattened_kernels(5), biases(5), leaky_relu_x, img_mat, mem, 0, size_im2col);
-        img_mat = max_pool_2(img_mat, mem, size_im2col);
+            let pool_3 = get_mat_acc(img_mat);
 
-        // Convolution 6
-        img_mat = conv2d(ksize, out_channels_6, flattened_kernels(6), biases(6), leaky_relu_x, img_mat, mem, 0, size_im2col);
+            // Convolution 5
+            img_mat = conv2d(ksize, out_channels_5, flattened_kernels(5), biases(5), leaky_relu_x, img_mat, mem, 0, size_im2col);
+            img_mat = max_pool_2(img_mat, mem, size_im2col);
 
-        // Convolution 7
-        img_mat = conv2d(ksize, out_channels_7, flattened_kernels(7), biases(7), leaky_relu_x, img_mat, mem, 0, size_im2col);
+            // Convolution 6
+            img_mat = conv2d(ksize, out_channels_6, flattened_kernels(6), biases(6), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
-        // Convolution 8
-        let mat_acc_1 = nearest_acc(img_mat);             // This swaps mem locations of img_mat and im2col_mat
-        let cat_acc_1 = get_cat_mat_acc(mat_acc_1, pool_3, img_mat.channels);
-        img_mat = cat_conv2d(ksize, out_channels_8, in_channels_8, flattened_kernels(8), biases(8), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_1, mem, 0, size_im2col);
+            // Convolution 7
+            img_mat = conv2d(ksize, out_channels_7, flattened_kernels(7), biases(7), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
-        // Convolution 9
-        img_mat = conv2d(ksize, out_channels_9, flattened_kernels(9), biases(9), leaky_relu_x, img_mat, mem, 0, size_im2col);
+            // Convolution 8
+            let mat_acc_1 = nearest_acc(img_mat);             // This swaps mem locations of img_mat and im2col_mat
+            let cat_acc_1 = get_cat_mat_acc(mat_acc_1, pool_3, img_mat.channels);
+            img_mat = cat_conv2d(ksize, out_channels_8, in_channels_8, flattened_kernels(8), biases(8), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_1, mem, 0, size_im2col);
 
-        // Convolution 10
-        let mat_acc_2 = nearest_acc(img_mat);   // This swaps mem locations of img_mat and im2col_mat
-        let cat_acc_2 = get_cat_mat_acc(mat_acc_2, pool_2, img_mat.channels);
-        img_mat = cat_conv2d(ksize, out_channels_10, in_channels_10, flattened_kernels(10), biases(10), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_2, mem, 0, size_im2col);
+            // Convolution 9
+            img_mat = conv2d(ksize, out_channels_9, flattened_kernels(9), biases(9), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
-        // Convolution 11
-        img_mat = conv2d(ksize, out_channels_11, flattened_kernels(11), biases(11), leaky_relu_x, img_mat, mem, 0, size_im2col);
+            // Convolution 10
+            let mat_acc_2 = nearest_acc(img_mat);   // This swaps mem locations of img_mat and im2col_mat
+            let cat_acc_2 = get_cat_mat_acc(mat_acc_2, pool_2, img_mat.channels);
+            img_mat = cat_conv2d(ksize, out_channels_10, in_channels_10, flattened_kernels(10), biases(10), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_2, mem, 0, size_im2col);
 
-        // Convolution 12
-        let mat_acc_3 = nearest_acc(img_mat);             // This swaps mem locations of img_mat and im2col_mat
-        let cat_acc_3 = get_cat_mat_acc(mat_acc_3, pool_1, img_mat.channels);
-        img_mat = cat_conv2d(ksize, out_channels_12, in_channels_12, flattened_kernels(12), biases(12), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_3, mem, 0, size_im2col);
+            // Convolution 11
+            img_mat = conv2d(ksize, out_channels_11, flattened_kernels(11), biases(11), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
-        // Convolution 13
-        img_mat = conv2d(ksize, out_channels_13, flattened_kernels(13), biases(13), leaky_relu_x, img_mat, mem, 0, size_im2col);
+            // Convolution 12
+            let mat_acc_3 = nearest_acc(img_mat);   // This swaps mem locations of img_mat and im2col_mat
+            let cat_acc_3 = get_cat_mat_acc(mat_acc_3, pool_1, img_mat.channels);
+            img_mat = cat_conv2d(ksize, out_channels_12, in_channels_12, flattened_kernels(12), biases(12), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_3, mem, 0, size_im2col);
 
-        // Convolution 14
-        let mat_acc_4 = nearest_acc(img_mat);   // This swaps mem locations of img_mat and im2col_mat
-        let cat_acc_4 = get_cat_mat_acc(mat_acc_4, cat_acc, img_mat.channels);
-        img_mat = cat_conv2d(ksize, out_channels_14, in_channels_14, flattened_kernels(14), biases(14), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_4, mem, 0, size_im2col);
+            // Convolution 13
+            img_mat = conv2d(ksize, out_channels_13, flattened_kernels(13), biases(13), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
-        // Convolution 15
-        img_mat = conv2d(ksize, out_channels_15, flattened_kernels(15), biases(15), leaky_relu_x, img_mat, mem, 0, size_im2col);
+            // Convolution 14
+            let mat_acc_4 = nearest_acc(img_mat);   // This swaps mem locations of img_mat and im2col_mat
+            let cat_acc_4 = get_cat_mat_acc(mat_acc_4, cat_acc, img_mat.channels);
+            img_mat = cat_conv2d(ksize, out_channels_14, in_channels_14, flattened_kernels(14), biases(14), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, cat_acc_4, mem, 0, size_im2col);
 
-        // Convolution 16
-        img_mat = conv2d(ksize, out_channels_16, flattened_kernels(16), biases(16), id, img_mat, mem, 0, size_im2col);
+            // Convolution 15
+            img_mat = conv2d(ksize, out_channels_15, flattened_kernels(15), biases(15), leaky_relu_x, img_mat, mem, 0, size_im2col);
 
-        // Write result in output buffer (necessary since rodent expects hwc while conv2d returns chw format)
-        chw_to_hwc(img_mat, out_buf, 0);
+            // Convolution 16
+            img_mat = conv2d(ksize, out_channels_16, flattened_kernels(16), biases(16), id, img_mat, mem, 0, size_im2col);
+
+            // Write result in output buffer (necessary since rodent expects hwc while conv2d returns chw format)
+            chw_to_hwc(img_mat, out_buf, 0);
+        });
+
+        if cpu_profiling_enabled {
+            fn @print_counter(counter: i64, name: &[u8]) -> () {
+                print_string(name);
+                print_string(": ");
+                print_i64(counter);
+                print_string(" (");
+                print_i64(counter * 100 / total_counter);
+                print_string("%)\n");
+            }
+            let other_counter = total_counter - im2col_counter - matmul_counter;
+            print_counter(im2col_counter, "im2col");
+            print_counter(matmul_counter, "matmul");
+            print_counter(other_counter,  "other");
+            print_string("\n");
+        }
     }
 
     NN_DEN { forward = forward_denoise, necess_mem = necess_mem }

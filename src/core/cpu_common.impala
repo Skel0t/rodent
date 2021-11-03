@@ -2,7 +2,7 @@
 
 #[import(cc = "C")] fn clock_us() -> i64;
 
-static cpu_profiling_enabled = false;
+static cpu_profiling_enabled = true;
 static cpu_profiling_serial  = false;
 
 // Profiles the function given as argument
