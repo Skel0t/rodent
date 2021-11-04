@@ -21,9 +21,12 @@ void read_in(anydsl::Array<float>* weights, float** biases, std::string network_
     const int memsize15 = 3 * 3 * 32 * 16;
     const int memsize16 = 3 * 3 * 16 * 3;
 
-    const int memsize_biases = 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64 + 64 + 32 + 16 + 3;
-    const int memsize_weights = (memsize1 + memsize2  + memsize3  + memsize4  + memsize5  + memsize6  + memsize7  + memsize8 +
-                                memsize9  + memsize10 + memsize11 + memsize12 + memsize13 + memsize14 + memsize15 + memsize16);
+    const int memsize_biases = 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 +
+                               70 + 64 + 64 + 32 + 16 + 3;
+    const int memsize_weights = (memsize1  + memsize2  + memsize3  + memsize4  +
+                                 memsize5  + memsize6  + memsize7  + memsize8  +
+                                 memsize9  + memsize10 + memsize11 + memsize12 +
+                                 memsize13 + memsize14 + memsize15 + memsize16);
 
     // Buffer for all convolution weights
     *weights = anydsl::Array<float>(memsize_weights);
@@ -81,7 +84,9 @@ void read_in(anydsl::Array<float>* weights, float** biases, std::string network_
     read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64 + 64 + 32 + 16, network_path + "/bias16.txt",  3);
 }
 
-void denoise(anydsl::Array<float>* color, anydsl::Array<float>* albedo, anydsl::Array<float>* normal, anydsl::Array<uint8_t>* memory, anydsl::Array<float>* out, int width, int height, anydsl::Array<float>* weights, float* biases) {
+void denoise(anydsl::Array<float>* color, anydsl::Array<float>* albedo, anydsl::Array<float>* normal,
+             anydsl::Array<uint8_t>* memory, anydsl::Array<float>* out, int width, int height,
+             anydsl::Array<float>* weights, float* biases) {
     Buffer color_buf   = { (char*) color->data(),   color->size(),   color->device()   };
     Buffer albedo_buf  = { (char*) albedo->data(),  albedo->size(),  albedo->device()  };
     Buffer normal_buf  = { (char*) normal->data(),  normal->size(),  normal->device()  };

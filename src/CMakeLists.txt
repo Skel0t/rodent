@@ -42,11 +42,14 @@ set(RODENT_SRCS
     traversal/stack.impala
     traversal/mapping_cpu.impala
     traversal/mapping_gpu.impala
+    driver/denoiser/activation.art
+    driver/denoiser/convolution.art
     driver/denoiser/interface.art
     driver/denoiser/iterate.art
-    driver/denoiser/kernel.art
     driver/denoiser/matrix.art
-    driver/denoiser/nn.art)
+    driver/denoiser/nn.art
+    driver/denoiser/pool_upsmp.art
+    driver/denoiser/utility.art)
 
 set(DRIVER_SRCS
     driver/driver.cpp

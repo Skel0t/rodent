@@ -1,4 +1,4 @@
-// Decide how to iterate by checking MemoryFormat
+/* Decide how to iterate by checking MemoryFormat */
 fn @iterate_matrix(body: fn(AccM, f32, i32, i32, i32) -> ()) {
 	let loop_chw = iterate_matrix_chw(body);
 	let loop_hwc = iterate_matrix_hwc(body);
@@ -12,8 +12,7 @@ fn @iterate_matrix(body: fn(AccM, f32, i32, i32, i32) -> ()) {
 	loop
 }
 
-// If a specific iteration is necessary, one can choose it here
-
+/* If a specific iteration is necessary, one can choose it here */
 fn @iterate_matrix_hwc(body: fn(AccM, f32, i32, i32, i32) -> ()) {
 	fn @loop(mat: Matrix) -> () {
 		let acc = get_mat_acc(mat);
@@ -44,8 +43,7 @@ fn @iterate_matrix_chw(body: fn(AccM, f32, i32, i32, i32) -> ()) {
 	loop
 }
 
-// Same as not parallel
-
+/* Same as not parallel. */
 fn @iterate_matrix_par(body: fn(AccM, f32, i32, i32, i32) -> ()) {
 	let loop_chw = iterate_matrix_chw_par(body);
 	let loop_hwc = iterate_matrix_hwc_par(body);

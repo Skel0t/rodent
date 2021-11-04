@@ -1,0 +1,28 @@
+/* Leaky ReLu with slope 0.01 in the negative domain to use as activation function.
+   Works on a single float argument. */
+   fn @leaky_relu_x(x: f32) -> f32 {
+    let neg_slope = 0.01 as f32;
+    if x >= 0.0 {
+        x
+    } else {
+        neg_slope * x
+    }
+}
+
+/* Uses the float to float leaky ReLu to iterate over the given matrix and apply it to
+   the each value individually. */
+fn @leaky_relu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
+    let res = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows, img_mat.cols);
+    let m_acc = get_mat_acc(img_mat);
+
+    for r_acc, _v, r, c, chn in iterate_matrix_par(res) {
+        r_acc.write(r, c, chn, leaky_relu_x(m_acc.read(r, c, chn)));
+    }
+    res
+}
+
+/* A simple identity function, that can be passed to a convolution, if no activation
+   function should be used for a specific convolution. */
+fn @id(x: f32) -> f32 {
+    x
+}

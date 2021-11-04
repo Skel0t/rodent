@@ -1,0 +1,54 @@
+/* Performs a pooling on the given matrix with receptive field "size x size" and
+   stride "size". The pooling_fn is a function that operates on the values in the
+   receptive field. The values are given in the order left to right, top to bottom. */
+   fn @pool(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, buf: Buffer, off: i64) -> Matrix {
+    let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
+    let img_acc = get_mat_acc(img_mat);
+
+    /* Needs at least size-many elements.
+       Although known at compile-time AnyDSL does only support magic numbers here. */
+    let mut v : [f32 * 4];
+    fn @values(idx: i32) -> f32 {
+        v(idx)
+    }
+    cpu_profile(&mut pool_counter, || {
+        for r_acc, _v, row, col, chn in iterate_matrix(res_mat) {
+            for r in unroll(0, size) {
+                for c in unroll(0, size) {
+                    v(r * size + c) = img_acc.read(size * row + r, size * col + c, chn);
+                }
+            }
+
+            let val = pooling_fn(values);
+            r_acc.write(row, col, chn, val);
+        }
+    });
+
+    res_mat
+}
+
+/* Explicitly performs nearest-neighbor upsampling, saving the result at buf at position off. */
+fn @nearest(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
+    let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows * 2, img_mat.cols * 2);
+
+    let img_acc = get_mat_acc(img_mat);
+
+    cpu_profile(&mut nearest_counter, || {
+        for res_acc, _v, row, col, chn in iterate_matrix_par(res_mat) {
+            res_acc.write(row, col, chn, img_acc.read(row / 2, col / 2, chn));
+        }
+    });
+
+
+    res_mat
+}
+
+/* Returns an accessor which acts like accessing an image that was upsampled using nearest-neighbor. */
+fn @nearest_acc(img_mat: Matrix) -> AccM {
+    let acc = get_mat_acc(img_mat);
+
+    AccM {
+        read  = @|row, col, chn|      { acc.read(row / 2, col / 2, chn) },
+        write = @|row, col, chn, val| { acc.write(row / 2, col / 2, chn, val) }
+    }
+}
