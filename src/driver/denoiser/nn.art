@@ -1,11 +1,19 @@
+/* Struct to return a forward propagation of a denoising neural network along
+   with its memory consumption during computation. */
 struct NN_DEN {
     forward : fn(Buffer, Buffer, Buffer, Buffer, Buffer) -> (),
     necess_mem : i64
 }
 
+/* Sets up a forward propagation of a sample denoising neural network provided
+   and trained by Hendrik Junkawitsch as part of his bachelors thesis.
+   The network's design is pretty much the same as OIDN, only small changes to
+   the number of feature maps were made. */
 fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) -> NN_DEN {
+    /* Kernel size and poolsize is the same for every convolution / pooling layer */
     let ksize    = 3;
     let ksize_sq = ksize * ksize;
+    let poolsize = 2;
 
     // ic -> ec1
     let in_channels_1  = 9;
@@ -87,7 +95,7 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
     let out_channels_16 = 3;
     let offset_16 = offset_15 + (ksize_sq * in_channels_15 * out_channels_15) as i64;
 
-    // Kernel matrices higher order functions
+    /* Kernel matrices higher-order function to pass to the convolutions. */
     let flattened_kernels = @|i: i32| {
         match i {
             1  => make_matrix(kernels, offset_1,  MemoryFormat::CHW, 1, out_channels_1,  ksize_sq * in_channels_1),
@@ -110,6 +118,7 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
         }
     };
 
+    /* Biases higher-order function to pass to the convolutions. All offsets precalculated. */
     let biases = @|j: i32| {
         match j {
             1  => @|i: i32| { biases(i) },
@@ -128,24 +137,29 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
             14 => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12 + out_channels_13) },
             15 => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12 + out_channels_13 + out_channels_14) },
             16 => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12 + out_channels_13 + out_channels_14 + out_channels_15) },
-            _  => @|_i:i32| { 0 as f32 }
+            _  => @|_i:i32| { 0 as f32 } /* No bias */
         }
     };
 
-    // Calculate necessary memory
-    let size_im2col = (width as i64) * (height as i64) * (ksize_sq as i64) * (108 /*max in channels*/ as i64);  // size for im2col matrix
-    let size_img    = (width as i64) * (height as i64) * (92 /*max out channels*/ as i64);                      // size to save matmul output
-    let size_pool_3 = (width as i64) * (height as i64) * (out_channels_4 as i64);    // sizes to save cross-connections
+    /* Calculate necessary memory */
+    let size_im2col = (width as i64) * (height as i64) * (ksize_sq as i64) * (108 /*max in channels*/ as i64);  /* max size for im2col matrix */
+    let size_img    = (width as i64) * (height as i64) * (92 /*max out channels*/ as i64);                      /* max size to save matmul output */
+    /* Sizes to save cross-connections: */
+    let size_pool_3 = (width as i64) * (height as i64) * (out_channels_4 as i64);
     let size_pool_2 = (width as i64) * (height as i64) * (out_channels_3 as i64);
     let size_pool_1 = (width as i64) * (height as i64) * (out_channels_2 as i64);
 
+    /* Alltogether, multiplied by 4, since we are using 32bit floats. */
     let necess_mem = 4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3);
 
     fn @forward_denoise(img: Buffer, albedo: Buffer, normal: Buffer, mem: Buffer, out_buf: Buffer) -> () {
-        let mut total_counter = 0 as i64;
+
         if cpu_profiling_enabled {
-            im2col_counter = 0;
-            matmul_counter = 0;
+            total_counter   = 0;
+            im2col_counter  = 0;
+            matmul_counter  = 0;
+            pool_counter    = 0;
+            nearest_counter = 0;
         }
 
         cpu_profile(&mut total_counter, || {
@@ -164,25 +178,25 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
 
             // Convolution 2
             img_mat = conv2d(ksize, out_channels_2, flattened_kernels(2), biases(2), leaky_relu_x, img_mat, mem, 0, size_im2col);
-            img_mat = max_pool_2(img_mat, mem, size_im2col + size_img);    // POOL 1
+            img_mat = pool(img_mat, poolsize, max_4, mem, size_im2col + size_img);    // POOL 1
 
             let pool_1 = get_mat_acc(img_mat);
 
             // Convolution 3
             img_mat = conv2d(ksize, out_channels_3, flattened_kernels(3), biases(3), leaky_relu_x, img_mat, mem, 0, size_im2col);
-            img_mat = max_pool_2(img_mat, mem, size_im2col + size_img + size_pool_1);    // POOL 2
+            img_mat = pool(img_mat, poolsize, max_4, mem, size_im2col + size_img + size_pool_1);    // POOL 2
 
             let pool_2 = get_mat_acc(img_mat);
 
             // Convolution 4
             img_mat = conv2d(ksize, out_channels_4, flattened_kernels(4), biases(4), leaky_relu_x, img_mat, mem, 0, size_im2col);
-            img_mat = max_pool_2(img_mat, mem, size_im2col + size_img + size_pool_1 + size_pool_2);    // POOL 3
+            img_mat = pool(img_mat, poolsize, max_4, mem, size_im2col + size_img + size_pool_1 + size_pool_2);    // POOL 3
 
             let pool_3 = get_mat_acc(img_mat);
 
             // Convolution 5
             img_mat = conv2d(ksize, out_channels_5, flattened_kernels(5), biases(5), leaky_relu_x, img_mat, mem, 0, size_im2col);
-            img_mat = max_pool_2(img_mat, mem, size_im2col);
+            img_mat = pool(img_mat, poolsize, max_4, mem, size_im2col);
 
             // Convolution 6
             img_mat = conv2d(ksize, out_channels_6, flattened_kernels(6), biases(6), leaky_relu_x, img_mat, mem, 0, size_im2col);
@@ -241,7 +255,9 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
             let other_counter = total_counter - im2col_counter - matmul_counter;
             print_counter(im2col_counter, "im2col");
             print_counter(matmul_counter, "matmul");
-            print_counter(other_counter,  "other");
+            print_counter(pool_counter,   "pool");
+            print_counter(nearest_counter,"nearest");
+            print_counter(other_counter,  "other (than im2col and matmul)");
             print_string("\n");
         }
     }

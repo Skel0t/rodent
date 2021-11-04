@@ -1,0 +1,43 @@
+/* Performance counters, to time where time is spent during forwarding. */
+static mut im2col_counter  = 0 as i64;
+static mut matmul_counter  = 0 as i64;
+static mut pool_counter    = 0 as i64;
+static mut nearest_counter = 0 as i64;
+static mut total_counter   = 0 as i64;
+
+/* Returns the maximum of the four arguments. */
+fn @max_4(values: fn(i32) -> f32) -> f32 {
+    let x = values(0);
+    let y = values(1);
+    let a = values(2);
+    let b = values(3);
+
+    let max_xy = select(x > y, x, y);
+    let max_ab = select(a > b, a, b);
+
+    select(max_xy > max_ab, max_xy, max_ab)
+}
+
+/* Returns minimum of the two integer arguments. */
+fn @imin(a: i32, b: i32) -> i32 {
+    select(a < b, a, b)
+}
+
+/* Prints matrix in given format. */
+fn @print_matrix_chw(mat: Matrix) -> () {
+    for _acc, val, _r, c, _chn in iterate_matrix_chw(mat) {
+        print_f32(val); print_string("\t");
+        if c == mat.cols - 1 {
+            print_string("\n");
+        }
+    }
+}
+
+fn @print_matrix_hwc(mat: Matrix) -> () {
+    for _acc, val, _r, c, chn in iterate_matrix_hwc(mat) {
+        print_f32(val); print_string("\t");
+        if c == mat.cols - 1 && chn == mat.channels - 1 {
+            print_string("\n");
+        }
+    }
+}

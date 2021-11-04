@@ -26,13 +26,9 @@ int64_t clock_us() {
 }
 
 int main() {
-    // bench_im2col(true);
+    // bench_denoiseDump(10, 10, true);
 
-    bench_denoiseDump(30, 10, false);
-
-    // bench_sresDump(10, 0);
-    // bench_sresDump(10, 10);
-    // bench_sresDump(10, 10);
+    bench_sresDump(10, 3, true);
 
     return 0;
 }
@@ -48,7 +44,7 @@ void sres_dump_wrap(anydsl::Array<float>* in_mat, anydsl::Array<float>* weights,
 /**
  * Only (!) benchmarking im2col + matmul + bias
  *
- * Not including activation function
+ * Not including activation function (is "id")
  */
 void bench_sresDump(int times, int heatup_iterations, bool correct_check) {
     // Constant values used in the dumped data

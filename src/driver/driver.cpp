@@ -333,7 +333,7 @@ int main(int argc, char** argv) {
     _mm_setcsr(_mm_getcsr() | (_MM_FLUSH_ZERO_ON | _MM_DENORMALS_ZERO_ON));
 #endif
 
-    const int img_s = width * height * 3 * sizeof(float);
+    const int img_s = width * height * 3;
     auto spp = get_spp();
     bool done = false;
     uint64_t timing = 0;
@@ -377,9 +377,9 @@ int main(int argc, char** argv) {
         auto ticks = std::chrono::high_resolution_clock::now();
         render(&settings, iter++);
         if (live) {
-            anydsl_copy(0, get_pixels(), 0, 0, pix.data(), 0, img_s);
-            anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s);
-            anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s);
+            anydsl_copy(0, get_pixels(),     0, 0, pix.data(), 0, img_s * sizeof(float));
+            anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s * sizeof(float));
+            anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s * sizeof(float));
 
             gamma_correct(width, height, iter, pix.data(), true);
             gamma_correct(width, height, iter, alb.data(), true);
@@ -447,9 +447,9 @@ int main(int argc, char** argv) {
             info("Image saved to '", out_file, "'");
         }
         if(dns != "") {
-            anydsl_copy(0, get_pixels(),     0, 0, pix.data(), 0, img_s);
-            anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s);
-            anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s);
+            anydsl_copy(0, get_pixels(),     0, 0, pix.data(), 0, img_s * sizeof(float));
+            anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s * sizeof(float));
+            anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s * sizeof(float));
 
             denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, biases);
             clamp_image(width, height, outputPtr.data());

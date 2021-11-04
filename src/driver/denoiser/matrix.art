@@ -20,6 +20,7 @@ fn @make_matrix(buffer: Buffer, offset: i64, format: MemoryFormat, channels: i32
     Matrix { buf = buffer, offset = offset, format = format, channels = channels, rows = rows, cols = cols }
 }
 
+/* Returns a Matrix accessor, no matter the memory layout (CHW or HWC) */
 fn @get_mat_acc(m: Matrix) -> AccM {
     fn @get_mat_acc_hwc(m: Matrix) -> AccM {
         AccM {
@@ -41,6 +42,9 @@ fn @get_mat_acc(m: Matrix) -> AccM {
     }
 }
 
+/* Takes two matrix accessors and the number of channels the first one is accessing.
+   Returns a concatenated accessor, accessing the channels of the second accessor
+   if the given channel exceeds channel count of the first accessor. */
 fn @get_cat_mat_acc(acc1: AccM, acc2: AccM, channels1: i32) -> AccM {
     AccM {
         read  = @|row, col, chn|      { if chn < channels1 { acc1.read(row, col, chn)        } else { acc2.read(row, col, chn - channels1) } },
@@ -48,23 +52,27 @@ fn @get_cat_mat_acc(acc1: AccM, acc2: AccM, channels1: i32) -> AccM {
     }
 }
 
+/* a and b need to have same channel format. */
 fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) -> Matrix {
     let mat = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     let a_acc = get_mat_acc(a);
     let b_acc = get_mat_acc(b);
     let m_acc = get_mat_acc(mat);
 
+    /* Constant variables defining the block size */
     let c_size = 64;
     let i_size = 16;
 
+    /* Needs c_size many elements. Even though it is known at compile-time
+       AnyDSL doesn't currently support putting c_size here */
     let mut m : [f32 * 64];
 
     let c_vec_len = round_down(mat.cols, c_size);
     let i_vec_len = round_down(a.cols, i_size);
 
-    // Vectorize over mat.cols with c_size vectors
+    /* Vectorize over mat.cols with c_size vectors */
     for c in range_step(0, c_vec_len, c_size) {
-        // ii loop for ii = 0
+        /* ii loop for ii = 0 */
         for r in range(0, mat.rows) {
             let b = biases(r);
             vectorize(64, @|j| {
@@ -76,7 +84,7 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32,
             });
         }
 
-        // ii loop for ii > 0 and last multiple of i_size < ii
+        /* ii loop for ii > 0 and last multiple of i_size < ii */
         for ii in range_step(i_size, i_vec_len, i_size) {
             for r in range(0, mat.rows) {
                 vectorize(64, @|j| {
@@ -90,7 +98,7 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32,
             }
         }
 
-        // ii loop for ii > (last multiple of i_size < ii)
+        /* ii loop for ii > (last multiple of i_size < ii) */
         for r in range(0, mat.rows) {
             for c_inner in range(c, imin(c + c_size, mat.cols)) {
                 m(0) = m_acc.read(r, c_inner, 0);
@@ -102,9 +110,9 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32,
         }
     }
 
-    // Do the remaining part without vectorization
+    /* Do the remaining part without vectorization */
     for c in range(c_vec_len, mat.cols) {
-        // ii loop for ii = 0
+        /* ii loop for ii = 0 */
         for r in range(0, mat.rows) {
             m(0) = biases(r);
             for i_loop in unroll(0, i_size) {
@@ -114,7 +122,7 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32,
             m_acc.write(r, c, 0, m(0));
         }
 
-        // ii loop for ii > 0 and last multiple of i_size < ii
+        /* ii loop for ii > 0 and last multiple of i_size < ii */
         for ii in range_step(i_size, i_vec_len, i_size) {
             for r in range(0, mat.rows) {
                 m(0) = m_acc.read(r, c, 0);
@@ -126,7 +134,7 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32,
             }
         }
 
-        // ii loop for ii > (last multiple of i_size < ii)
+        /* ii loop for ii > (last multiple of i_size < ii) */
         for r in range(0, mat.rows) {
             m(0) = m_acc.read(r, c, 0);
             for i in range(i_vec_len, a.cols) {
@@ -139,11 +147,7 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32,
     mat
 }
 
-fn @imin(a: i32, b: i32) -> i32 {
-    if a < b { a } else { b }
-}
-
-// Need to have same channel format
+/* a and b need to have same channel format */
 fn @mkl_matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
     let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     mkl_blas_mm_mult(/*m*/ a.rows, /*n*/ b.cols, /*k*/ a.cols,
@@ -152,12 +156,12 @@ fn @mkl_matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
         /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))), /*ldc*/ b.cols);
 
     for acc, v, row, col, chn in iterate_matrix_par(c) {
-        acc.write(row, col, chn, act_fn(v + biases(row)));  // 1 channel per row
+        acc.write(row, col, chn, act_fn(v + biases(row)));  // 1 channel per row, thus access  row-th bias
     }
     c
 }
 
-// Need to have same channel format
+/* a and b need to have same channel format. */
 fn @cublas_matmul(a: Matrix, b: Matrix, device: i32, buf: Buffer, off: i64) {
     let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
 
@@ -189,31 +193,29 @@ fn @copy_dev_to_host(host_memory: &mut [i8], device_memory: &[i8], dev: i32, siz
     runtime_copy(runtime_device(1, dev), device_memory, 0, runtime_device(0, 0), host_memory, 0, size);
 }
 
-fn @add_element_wise(mat1: Matrix, mat2: Matrix, buf: Buffer, off: i64) -> Matrix {
-    let res = make_matrix(buf, off, mat1.format, mat1.channels, mat1.rows, mat1.cols);
+/* Matrices a and b need to have the same dimensions. */
+fn @add_element_wise(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
+    let res = make_matrix(buf, off, a.format, a.channels, a.rows, a.cols);
 
     let res_acc  = get_mat_acc(res);
-    let mat2_acc = get_mat_acc(mat2);
-    for _acc, v, r, c, chn in iterate_matrix_par(mat1) {
-        res_acc.write(r, c, chn, mat2_acc.read(r, c, chn) + v);
+    let b_acc = get_mat_acc(b);
+
+    for _acc, v, r, c, chn in iterate_matrix_par(a) {
+        res_acc.write(r, c, chn, b_acc.read(r, c, chn) + v);
     }
+
     res
 }
 
-fn @print_matrix_chw(mat: Matrix) -> () {
-    for _acc, val, _r, c, _chn in iterate_matrix_chw(mat) {
-        print_f32(val); print_string("\t");
-        if c == mat.cols - 1 {
-            print_string("\n");
-        }
-    }
-}
+/* Copies the given matrix to the given buffer and offset in HWC format. */
+fn @chw_to_hwc(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
+    let res = make_matrix(buf, off, MemoryFormat::HWC, img_mat.channels, img_mat.rows, img_mat.cols);
 
-fn @print_matrix_hwc(mat: Matrix) -> () {
-    for _acc, val, _r, c, chn in iterate_matrix_hwc(mat) {
-        print_f32(val); print_string("\t");
-        if c == mat.cols - 1 && chn == mat.channels - 1 {
-            print_string("\n");
-        }
+    let img_acc = get_mat_acc(img_mat);
+
+    for res_acc, _v, row, col, chn in iterate_matrix_par(res) {
+        res_acc.write(row, col, chn, img_acc.read(row, col, chn));
     }
+
+    res
 }

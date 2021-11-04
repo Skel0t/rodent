@@ -4,19 +4,24 @@
 #[import(cc = "C")] fn mkl_apply_relu(_n: i32, _a: &[f32], _c: &mut[f32]) -> ();
 #[import(cc = "C")] fn cublas_gemm(_d_A: &[f32], d_B: &[f32], _d_C: &[f32], a_width: i32, a_height: i32, b_width: i32, device: i32) -> ();
 
+/* Returns necessary memory for the denoising neural network, so that it can be
+   allocated in C++. Hard coded constants. */
 #[export]
 fn @get_necessary_mem(width: i32, height: i32) -> i64 {
-    let size_im2col = (width as i64) * (height as i64) * (9 as i64) * (108 /*max in channels*/ as i64);  // size for im2col matrix
-    let size_img    = (width as i64) * (height as i64) * (92 /*max out channels*/ as i64);                      // size to save matmul output
-    let size_pool_3 = (width as i64) * (height as i64) * (32 as i64);    // sizes to save cross-connections
+    let size_im2col = (width as i64) * (height as i64) * (9 as i64) * (108 /*max in channels*/ as i64);  /* max size for im2col matrix */
+    let size_img    = (width as i64) * (height as i64) * (92 /*max out channels*/ as i64); /* max size to save matmul output */
+    /* sizes to save cross-connections */
+    let size_pool_3 = (width as i64) * (height as i64) * (32 as i64);
     let size_pool_2 = (width as i64) * (height as i64) * (16 as i64);
     let size_pool_1 = (width as i64) * (height as i64) * (12 as i64);
 
     4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3)
 }
 
+/* Interface function to denoise with the given data with the denoising network. */
 #[export]
-fn @forward_denoise(img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &Buffer, width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &[f32]) -> () {
+fn @forward_denoise(img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &Buffer,
+                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &[f32]) -> () {
     let nn = make_denoise_nn(*kernels, biases, width, height);
     nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
 }

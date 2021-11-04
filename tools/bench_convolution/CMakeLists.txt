@@ -1,9 +1,12 @@
 set(NN_ART_SRCS
+    ../../src/driver/denoiser/activation.art
+    ../../src/driver/denoiser/convolution.art
     ../../src/driver/denoiser/interface.art
     ../../src/driver/denoiser/iterate.art
-    ../../src/driver/denoiser/kernel.art
     ../../src/driver/denoiser/matrix.art
     ../../src/driver/denoiser/nn.art
+    ../../src/driver/denoiser/pool_upsmp.art
+    ../../src/driver/denoiser/utility.art
     ../../src/core/common.impala
     ../../src/core/cpu_common.impala
     ../../src/core/sort.impala
