@@ -63,15 +63,17 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32,
     let c_size = 64;
     let i_size = 16;
 
-    /* Needs c_size many elements. Even though it is known at compile-time
-       AnyDSL doesn't currently support putting c_size here */
-    let mut m : [f32 * 64];
+
 
     let c_vec_len = round_down(mat.cols, c_size);
     let i_vec_len = round_down(a.cols, i_size);
 
     /* Vectorize over mat.cols with c_size vectors */
-    for c in range_step(0, c_vec_len, c_size) {
+    for c in parallel_step(0, c_vec_len, c_size) {
+        /* Needs c_size many elements. Even though it is known at compile-time
+           AnyDSL doesn't currently support putting c_size here */
+        let mut m : [f32 * 64];
+
         /* ii loop for ii = 0 */
         for r in range(0, mat.rows) {
             let b = biases(r);
@@ -111,7 +113,9 @@ fn @matmul(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32,
     }
 
     /* Do the remaining part without vectorization */
-    for c in range(c_vec_len, mat.cols) {
+    for c in parallel(0, c_vec_len, mat.cols) {
+        let mut m : [f32 * 64];
+
         /* ii loop for ii = 0 */
         for r in range(0, mat.rows) {
             m(0) = biases(r);
@@ -218,4 +222,16 @@ fn @chw_to_hwc(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     }
 
     res
+}
+
+fn @parallel_step(body: fn(i32) -> ()) {
+    fn @loop(beg: i32, end: i32, step: i32) -> () {
+        let iterations = (end - beg) / step;
+        for i in parallel(0, 0, iterations) {
+            let cur = beg + i * step;
+            @@body(cur)
+        }
+    }
+
+    loop
 }
