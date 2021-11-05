@@ -53,8 +53,3 @@ fn @im2col_dump(in_buf: &Buffer, out_buf: &Buffer) -> () {
 
     im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, acc, padding, *out_buf, off);
 }
-
-// #[export]
-// fn @forwarding_denoise_dumo(img_mat: &Buffer, alb_mat: &Buffer, nrm_mat: &Buffer, nn_mem: &Buffer, flattened_kernels: &Buffer, biases: &[f32], out: &Buffer) -> () {
-//     forward_denoise(img_mat, alb_mat, nrm_mat, nn_mem, 512, 512, out, flattened_kernels, biases);
-// }

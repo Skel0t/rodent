@@ -171,6 +171,14 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
             let alb_acc = get_mat_acc(alb_mat);
             let nrm_acc = get_mat_acc(nrm_mat);
 
+            // print_string("img_mat:\n");
+            // print_matrix_hwc(img_mat);
+            // print_string("\nalb_mat:\n");
+            // print_matrix_hwc(alb_mat);
+            // print_string("\nnrm_mat:\n");
+            // print_matrix_hwc(nrm_mat);
+            // print_string("\n\n");
+
             let cat_acc = get_cat_mat_acc(get_cat_mat_acc(img_acc, alb_acc, img_mat.channels), nrm_acc, img_mat.channels + alb_mat.channels);
 
             // Convolution 1
@@ -238,6 +246,9 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
 
             // Convolution 16
             img_mat = conv2d(ksize, out_channels_16, flattened_kernels(16), biases(16), id, img_mat, mem, 0, size_im2col);
+
+            // print_string("end result:\n");
+            // print_matrix_chw(img_mat);
 
             // Write result in output buffer (necessary since rodent expects hwc while conv2d returns chw format)
             chw_to_hwc(img_mat, out_buf, 0);

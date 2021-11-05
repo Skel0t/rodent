@@ -12,23 +12,17 @@
 #endif
 
 void bench_sresDump(int times = 1, int heatup_iterations = 0, bool correct_check = false);
-void bench_denoiseDump(int times = 1, int heatup_iterations = 0, bool correct_check = false);
+void bench_denoiseDump512(int times = 1, int heatup_iterations = 0, bool correct_check = false);
+void bench_denoiseDump1k(int times = 1, int heatup_iterations = 0, bool correct_check = false);
 void bench_im2col(bool correct_check = false);
 
-int64_t clock_us() {
-#if defined(__x86_64__) || defined(__amd64__) || defined(_M_X64)
-#define CPU_FREQ 4e9
-    __asm__ __volatile__("xorl %%eax,%%eax \n    cpuid" ::: "%rax", "%rbx", "%rcx", "%rdx");
-    return __rdtsc() * int64_t(1000000) / int64_t(CPU_FREQ);
-#else
-    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-#endif
-}
+void bench_denoiseDump(int width, int height, int channels, std::string dump_dir, int times, int heat_up_iterations, bool correct_check);
 
 int main() {
-    // bench_denoiseDump(10, 10, true);
+    // bench_denoiseDump512(100, 10, false);
+    // bench_denoiseDump1k(100, 10, false);
 
-    bench_sresDump(10, 3, true);
+    bench_sresDump(10, 10, false);
 
     return 0;
 }
@@ -45,6 +39,9 @@ void sres_dump_wrap(anydsl::Array<float>* in_mat, anydsl::Array<float>* weights,
  * Only (!) benchmarking im2col + matmul + bias
  *
  * Not including activation function (is "id")
+ *
+ * Input  Size: 960 x 540
+ * Output Size: 1920 x 1080
  */
 void bench_sresDump(int times, int heatup_iterations, bool correct_check) {
     // Constant values used in the dumped data
@@ -119,13 +116,35 @@ outer_break:
 
 /**
  * Benchmarks one forwarding through the denoising neural network with dumped input data
+ *
+ * Input size: 512x512
  */
-void bench_denoiseDump(int times, int heatup_iterations, bool correct_check) {
+void bench_denoiseDump512(int times, int heatup_iterations, bool correct_check) {
     // Constant values used in the dumped data
     const int width  = 512;
     const int height = 512;
     const int channels = 3;
+    const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/denoising_512x512/";
 
+    bench_denoiseDump(width, height, channels, dump_dir, times, heatup_iterations, correct_check);
+}
+
+/**
+ * Benchmarks one forwarding through the denoising neural network with dumped input data
+ *
+ * Input size: 1024x1024
+ */
+void bench_denoiseDump1k(int times, int heatup_iterations, bool correct_check) {
+    // Constant values used in the dumped data
+    const int width  = 1024;
+    const int height = 1024;
+    const int channels = 3;
+    const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/denoising_1kx1k/";
+
+    bench_denoiseDump(width, height, channels, dump_dir, times, heatup_iterations, correct_check);
+}
+
+void bench_denoiseDump(int width, int height, int channels, std::string dump_dir, int times, int heat_up_iterations, bool correct_check) {
     // Buffer for weights and biases
     anydsl::Array<float> weights;
     float* biases;
@@ -143,13 +162,13 @@ void bench_denoiseDump(int times, int heatup_iterations, bool correct_check) {
     read_in(&weights, &biases);
 
     // Read in dumped data of forwarding routine
-    read_in_matrix_hwc(img_mat.data(), BENCH_DUMP_DIR "/dumped_data/denoising_fw/img_mat.txt", channels, height, width);
-    read_in_matrix_hwc(alb_mat.data(), BENCH_DUMP_DIR "/dumped_data/denoising_fw/alb_mat.txt", channels, height, width);
-    read_in_matrix_hwc(nrm_mat.data(), BENCH_DUMP_DIR "/dumped_data/denoising_fw/nrm_mat.txt", channels, height, width);
-    read_in_matrix_chw(ref_mat.data(), BENCH_DUMP_DIR "/dumped_data/denoising_fw/ref_mat.txt", channels, height, width);
+    read_in_matrix_hwc(img_mat.data(), dump_dir + "img_mat.txt", channels, height, width);
+    read_in_matrix_hwc(alb_mat.data(), dump_dir + "alb_mat.txt", channels, height, width);
+    read_in_matrix_hwc(nrm_mat.data(), dump_dir + "nrm_mat.txt", channels, height, width);
+    read_in_matrix_chw(ref_mat.data(), dump_dir + "ref_mat.txt", channels, height, width);
 
     // Heat-Up iterations
-    for (int i = 0; i < heatup_iterations; i++) {
+    for (int i = 0; i < heat_up_iterations; i++) {
         denoise(&img_mat, &alb_mat, &nrm_mat, &nn_memory, &out_mat, width, height, &weights, biases);
     }
 
@@ -201,6 +220,9 @@ void im2col_wrap(anydsl::Array<float>* in_mat, anydsl::Array<float>* out_mat) {
     im2col_dump(&in_mat_buf, &out_mat_buf);
 }
 
+/**
+ * Benchmarks the im2col time of a middle convolutional layer of a 512x512 image.
+ */
 void bench_im2col(bool correct_check) {
     const int ksize  = 3;
     const int width  = 32;
@@ -240,4 +262,15 @@ void bench_im2col(bool correct_check) {
     in_mat.release();
     ref_mat.release();
     out_mat.release();
+}
+
+/* Needed in artic to measure how much time is spent in specific code snippets. */
+int64_t clock_us() {
+#if defined(__x86_64__) || defined(__amd64__) || defined(_M_X64)
+#define CPU_FREQ 4e9
+    __asm__ __volatile__("xorl %%eax,%%eax \n    cpuid" ::: "%rax", "%rbx", "%rcx", "%rdx");
+    return __rdtsc() * int64_t(1000000) / int64_t(CPU_FREQ);
+#else
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+#endif
 }
