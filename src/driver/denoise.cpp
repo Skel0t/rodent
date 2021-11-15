@@ -1,6 +1,6 @@
 #include "denoise.h"
 
-void read_in(anydsl::Array<float>* weights, float** biases, std::string network_path) {
+void read_in(anydsl::Array<float>* weights, anydsl::Array<float>* biases, std::string network_path) {
     if (network_path.back() == '/') {
         network_path = network_path.substr(0, network_path.size() - 1);
     }
@@ -30,8 +30,7 @@ void read_in(anydsl::Array<float>* weights, float** biases, std::string network_
 
     // Buffer for all convolution weights
     *weights = anydsl::Array<float>(memsize_weights);
-
-    *biases = (float*) malloc(sizeof(float) * (memsize_biases));
+    *biases  = anydsl::Array<float>(memsize_biases);
 
     int offset = 0;
     read_in_weigths_chw(weights->data(), offset, network_path + "/conv1.txt",  9, 12, 3);
@@ -66,33 +65,34 @@ void read_in(anydsl::Array<float>* weights, float** biases, std::string network_
     offset += memsize15;
     read_in_weigths_chw(weights->data(), offset, network_path + "/conv16.txt", 16, 3, 3);
 
-    read_in_biases(*biases, 0, network_path + "/bias1.txt",  12);
-    read_in_biases(*biases, 12, network_path + "/bias2.txt",  12);
-    read_in_biases(*biases, 12 + 12, network_path + "/bias3.txt",  16);
-    read_in_biases(*biases, 12 + 12 + 16, network_path + "/bias4.txt", 32);
-    read_in_biases(*biases, 12 + 12 + 16 + 32, network_path + "/bias5.txt",  64);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64, network_path + "/bias6.txt",  70);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70, network_path + "/bias7.txt",  70);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70 + 70, network_path + "/bias8.txt",  92);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92, network_path + "/bias9.txt",  92);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92, network_path + "/bias10.txt",  70);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70, network_path + "/bias11.txt",  70);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70, network_path + "/bias12.txt",  64);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64, network_path + "/bias13.txt",  64);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64 + 64, network_path + "/bias14.txt",  32);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64 + 64 + 32, network_path + "/bias15.txt",  16);
-    read_in_biases(*biases, 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64 + 64 + 32 + 16, network_path + "/bias16.txt",  3);
+    read_in_biases(biases->data(), 0, network_path + "/bias1.txt",  12);
+    read_in_biases(biases->data(), 12, network_path + "/bias2.txt",  12);
+    read_in_biases(biases->data(), 12 + 12, network_path + "/bias3.txt",  16);
+    read_in_biases(biases->data(), 12 + 12 + 16, network_path + "/bias4.txt", 32);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32, network_path + "/bias5.txt",  64);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64, network_path + "/bias6.txt",  70);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70, network_path + "/bias7.txt",  70);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70 + 70, network_path + "/bias8.txt",  92);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92, network_path + "/bias9.txt",  92);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92, network_path + "/bias10.txt",  70);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70, network_path + "/bias11.txt",  70);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70, network_path + "/bias12.txt",  64);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64, network_path + "/bias13.txt",  64);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64 + 64, network_path + "/bias14.txt",  32);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64 + 64 + 32, network_path + "/bias15.txt",  16);
+    read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64 + 64 + 32 + 16, network_path + "/bias16.txt",  3);
 }
 
 void denoise(anydsl::Array<float>* color, anydsl::Array<float>* albedo, anydsl::Array<float>* normal,
              anydsl::Array<uint8_t>* memory, anydsl::Array<float>* out, int width, int height,
-             anydsl::Array<float>* weights, float* biases) {
-    Buffer color_buf   = { (char*) color->data(),   color->size(),   color->device()   };
-    Buffer albedo_buf  = { (char*) albedo->data(),  albedo->size(),  albedo->device()  };
-    Buffer normal_buf  = { (char*) normal->data(),  normal->size(),  normal->device()  };
-    Buffer memory_buf  = { (char*) memory->data(),  memory->size(),  memory->device()  };
-    Buffer out_buf     = { (char*) out->data(),     out->size(),     out->device()     };
-    Buffer weights_buf = { (char*) weights->data(), weights->size(), weights->device() };
+             anydsl::Array<float>* weights, anydsl::Array<float>* biases) {
+    Buffer color_buf   = { (char*) color->data(),   color->size()  * (long) sizeof(float),   color->device()   };
+    Buffer albedo_buf  = { (char*) albedo->data(),  albedo->size() * (long) sizeof(float),   albedo->device()  };
+    Buffer normal_buf  = { (char*) normal->data(),  normal->size() * (long) sizeof(float),   normal->device()  };
+    Buffer memory_buf  = { (char*) memory->data(),  memory->size() * (long) sizeof(uint8_t), memory->device()  };
+    Buffer out_buf     = { (char*) out->data(),     out->size()    * (long) sizeof(float),   out->device()     };
+    Buffer weights_buf = { (char*) weights->data(), weights->size()* (long) sizeof(float),   weights->device() };
+    Buffer biases_buf  = { (char*) biases->data(),  biases->size() * (long) sizeof(float),   biases->device()  };
 
-    forward_denoise(&color_buf, &albedo_buf, &normal_buf, &memory_buf, width, height, &out_buf, &weights_buf, biases);
+    forward_denoise(&color_buf, &albedo_buf, &normal_buf, &memory_buf, width, height, &out_buf, &weights_buf, &biases_buf);
 }

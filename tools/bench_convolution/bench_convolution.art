@@ -53,3 +53,17 @@ fn @im2col_dump(in_buf: &Buffer, out_buf: &Buffer) -> () {
 
     im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, acc, padding, *out_buf, off);
 }
+
+#[export]
+fn @test(buf_ptr: &Buffer) -> () {
+    let buf = (*buf_ptr);
+
+    let bc_buf = bitcast[&mut[f32]](buf.data);
+
+    let acc = cuda_accelerator(0);
+
+    for item in acc.exec((1, 1, 1), (1, 1, 1)) {
+        bc_buf(0) = 4.51;
+    }
+    print_string("\n");
+}

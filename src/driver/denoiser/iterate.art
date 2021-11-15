@@ -86,3 +86,15 @@ fn @iterate_matrix_chw_par(body: fn(AccM, f32, i32, i32, i32) -> ()) {
 
 	loop
 }
+
+fn @parallel_step(body: fn(i32) -> ()) {
+    fn @loop(beg: i32, end: i32, step: i32) -> () {
+        let iterations = (end - beg) / step;
+        for i in parallel(0, 0, iterations) {
+            let cur = beg + i * step;
+            @@body(cur)
+        }
+    }
+
+    loop
+}

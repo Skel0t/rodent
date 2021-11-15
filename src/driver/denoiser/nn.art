@@ -9,7 +9,7 @@ struct NN_DEN {
    and trained by Hendrik Junkawitsch as part of his bachelors thesis.
    The network's design is pretty much the same as OIDN, only small changes to
    the number of feature maps were made. */
-fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) -> NN_DEN {
+fn @make_denoise_nn(kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NN_DEN {
     /* Kernel size and poolsize is the same for every convolution / pooling layer */
     let ksize    = 3;
     let ksize_sq = ksize * ksize;
@@ -118,25 +118,27 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
         }
     };
 
+    let bc_biases = bitcast[&[f32]](biases.data);
+
     /* Biases higher-order function to pass to the convolutions. All offsets precalculated. */
     let biases = @|j: i32| {
         match j {
-            1  => @|i: i32| { biases(i) },
-            2  => @|i: i32| { biases(i + out_channels_1) },
-            3  => @|i: i32| { biases(i + out_channels_1 + out_channels_2) },
-            4  => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3) },
-            5  => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4) },
-            6  => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5) },
-            7  => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6) },
-            8  => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7) },
-            9  => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8) },
-            10 => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9) },
-            11 => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10) },
-            12 => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11) },
-            13 => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12) },
-            14 => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12 + out_channels_13) },
-            15 => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12 + out_channels_13 + out_channels_14) },
-            16 => @|i: i32| { biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12 + out_channels_13 + out_channels_14 + out_channels_15) },
+            1  => @|i: i32| { bc_biases(i) },
+            2  => @|i: i32| { bc_biases(i + out_channels_1) },
+            3  => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2) },
+            4  => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3) },
+            5  => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4) },
+            6  => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5) },
+            7  => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6) },
+            8  => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7) },
+            9  => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8) },
+            10 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9) },
+            11 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10) },
+            12 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11) },
+            13 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12) },
+            14 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12 + out_channels_13) },
+            15 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12 + out_channels_13 + out_channels_14) },
+            16 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5 + out_channels_6 + out_channels_7 + out_channels_8 + out_channels_9 + out_channels_10 + out_channels_11 + out_channels_12 + out_channels_13 + out_channels_14 + out_channels_15) },
             _  => @|_i:i32| { 0 as f32 } /* No bias */
         }
     };
@@ -170,14 +172,6 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
             let img_acc = get_mat_acc(img_mat);
             let alb_acc = get_mat_acc(alb_mat);
             let nrm_acc = get_mat_acc(nrm_mat);
-
-            // print_string("img_mat:\n");
-            // print_matrix_hwc(img_mat);
-            // print_string("\nalb_mat:\n");
-            // print_matrix_hwc(alb_mat);
-            // print_string("\nnrm_mat:\n");
-            // print_matrix_hwc(nrm_mat);
-            // print_string("\n\n");
 
             let cat_acc = get_cat_mat_acc(get_cat_mat_acc(img_acc, alb_acc, img_mat.channels), nrm_acc, img_mat.channels + alb_mat.channels);
 
@@ -246,9 +240,6 @@ fn @make_denoise_nn(kernels: Buffer, biases: &[f32], width: i32, height: i32) ->
 
             // Convolution 16
             img_mat = conv2d(ksize, out_channels_16, flattened_kernels(16), biases(16), id, img_mat, mem, 0, size_im2col);
-
-            // print_string("end result:\n");
-            // print_matrix_chw(img_mat);
 
             // Write result in output buffer (necessary since rodent expects hwc while conv2d returns chw format)
             chw_to_hwc(img_mat, out_buf, 0);

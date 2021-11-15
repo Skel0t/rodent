@@ -21,7 +21,7 @@ fn @get_necessary_mem(width: i32, height: i32) -> i64 {
 /* Interface function to denoise with the given data with the denoising network. */
 #[export]
 fn @forward_denoise(img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &Buffer,
-                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &[f32]) -> () {
-    let nn = make_denoise_nn(*kernels, biases, width, height);
+                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer) -> () {
+    let nn = make_denoise_nn(*kernels, *biases, width, height);
     nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
 }
