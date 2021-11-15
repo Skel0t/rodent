@@ -70,7 +70,7 @@ fn @cat_conv2d(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernel
         { im2col_mat = im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off); }
     );
     cpu_profile(&mut matmul_counter, @||
-        { prod       = matmul(flattened_kernels, im2col_mat, biases, act_fn, buf, off_res); }
+        { prod       = matmul_gpu(flattened_kernels, im2col_mat, biases, act_fn, buf, off_res); }
     );
 
     // Reshape matrix for future use, no values are changed
