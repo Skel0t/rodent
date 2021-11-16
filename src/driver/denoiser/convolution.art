@@ -2,7 +2,7 @@
    Currently only supports a stride of 1.
    For a bigger stride, r and c need to be scaled by it in the calculation of p_row and p_col.
    It is not implemented though, since I did not test it for bigger strides. */
-fn @im2col(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_height: i32, channels: i32,
+fn @im2col_cpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_height: i32, channels: i32,
            img_acc: AccM, padding: i32, buf: Buffer, off: i64) -> Matrix {
     let img_s    = (out_width as i64) * (out_height as i64);
     let ksize_sq = (ksize as i64) * (ksize as i64);
@@ -67,7 +67,84 @@ fn @cat_conv2d(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernel
     let mut im2col_mat : Matrix;
     let mut prod : Matrix;
     cpu_profile(&mut im2col_counter, @||
-        { im2col_mat = im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off); }
+        { im2col_mat = im2col_cpu(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off); }
+    );
+    cpu_profile(&mut matmul_counter, @||
+        { prod       = matmul_cpu(flattened_kernels, im2col_mat, biases, act_fn, buf, off_res); }
+    );
+
+    // Reshape matrix for future use, no values are changed
+    make_matrix(prod.buf, prod.offset, MemoryFormat::CHW, out_channels, out_height, out_width)
+}
+
+fn @im2col_gpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_height: i32, channels: i32,
+               img_acc: AccM, padding: i32, buf: Buffer, off: i64) -> Matrix {
+    let acc = cuda_accelerator(0);
+
+    let img_s    = out_width * out_height;
+    let ksize_sq = (ksize as i64) * (ksize as i64);
+
+    let bc = bitcast[&mut[f32]](buf.data);
+    let res_mat = make_matrix(buf, off, MemoryFormat::CHW, 1, channels * ksize_sq as i32, img_s);
+
+    let i_size = 32;    // Image (w*h) dimension
+    let c_size = 8;     // Channel dimension
+    let block = (i_size, c_size, 1);
+    let grid  = (round_up(img_s, i_size), round_up(channels, c_size), 1);
+
+    for work_item in acc.exec(grid, block) {
+        let idx = work_item.bdimx() * work_item.bidx() + work_item.tidx();
+        let chn = work_item.bdimy() * work_item.bidy() + work_item.tidy();
+
+        if idx < img_s && chn < channels {
+            // Valid thread -> do the same as in cpu code
+            let r = idx / out_width;
+            let c = idx % out_width;
+
+            let mut base_row = (chn as i64) * (img_s as i64) * ksize_sq;
+            let     base_col = r * out_width + c;
+
+            let p_row = r - padding;
+            let p_col = c - padding;
+
+            for y in unroll(0, ksize) {
+                for x in unroll(0, ksize) {
+                    let h = p_row + y;
+                    let w = p_col + x;
+
+                    if h < 0 || w < 0 || h >= in_height || w >= in_width {
+                        bc(off + base_row + (base_col as i64)) = 0; /* zero-padding */
+                    } else {
+                        bc(off + base_row + (base_col as i64)) = img_acc.read(h, w, chn);
+                    }
+
+                    base_row += img_s as i64;
+                }
+            }
+        }
+    }
+
+    res_mat
+}
+
+fn @conv2d_gpu(ksize: i32, out_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32,
+           act_fn: fn(f32) -> f32, img_mat: Matrix, buf: Buffer, off: i64, off_res: i64) -> Matrix {
+    cat_conv2d_gpu(ksize, out_channels, img_mat.channels, flattened_kernels, biases,
+               act_fn, img_mat.rows, img_mat.cols, get_mat_acc(img_mat), buf, off, off_res)
+}
+
+fn @cat_conv2d_gpu(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernels: Matrix,
+               biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, in_rows: i32, in_cols: i32,
+               img_acc: AccM, buf: Buffer, off: i64, off_res: i64) -> Matrix {
+    // insize == outsize if padding == ksize / 2.0 - 1
+    let padding    = ksize / 2;
+    let out_width  = (in_cols + 2 * padding - ksize) + 1;
+    let out_height = (in_rows + 2 * padding - ksize) + 1;
+
+    let mut im2col_mat : Matrix;
+    let mut prod : Matrix;
+    cpu_profile(&mut im2col_counter, @||
+        { im2col_mat = im2col_gpu(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off); }
     );
     cpu_profile(&mut matmul_counter, @||
         { prod       = matmul_gpu(flattened_kernels, im2col_mat, biases, act_fn, buf, off_res); }

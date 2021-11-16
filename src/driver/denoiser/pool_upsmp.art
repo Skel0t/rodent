@@ -27,6 +27,45 @@
     res_mat
 }
 
+fn @pool_gpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, buf: Buffer, off: i64) -> Matrix {
+    let acc = cuda_accelerator(0);
+
+    let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
+    let img_acc = get_mat_acc(img_mat);
+    let r_acc   = get_mat_acc(res_mat);
+
+    let threads_x = 32;
+    let threads_y = 32;
+    let block = (threads_x, threads_y, 1);
+    let grid  = (round_up(res_mat.cols, threads_x), round_up(res_mat.rows, threads_y), res_mat.channels);
+
+    for work_item in acc.exec(grid, block) {
+        let col = work_item.bdimx() * work_item.bidx() + work_item.tidx();
+        let row = work_item.bdimy() * work_item.bidy() + work_item.tidy();
+        let chn = work_item.bidz();     // Will never overshoot, always valid
+
+        /* Needs at least size-many elements.
+           Although known at compile-time AnyDSL does only support magic numbers here. */
+        let mut v : [f32 * 4];
+        fn @values(idx: i32) -> f32 {
+            v(idx)
+        }
+
+        if row < res_mat.rows && col < res_mat.cols {
+            // Valid thread, do same calculation as in cpu here
+            for r in unroll(0, size) {
+                for c in unroll(0, size) {
+                    v(r * size + c) = img_acc.read(size * row + r, size * col + c, chn);
+                }
+            }
+            let val = pooling_fn(values);
+            r_acc.write(row, col, chn, val);
+        }
+    }
+
+    res_mat
+}
+
 /* Explicitly performs nearest-neighbor upsampling, saving the result at buf at position off. */
 fn @nearest(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows * 2, img_mat.cols * 2);
