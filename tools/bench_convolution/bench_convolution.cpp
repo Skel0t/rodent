@@ -27,7 +27,7 @@ anydsl::Array<T> copy_to_device(int32_t dev, const T* data, size_t n) {
 
 
 int main() {
-    bench_denoiseDump512(1, 0, true, false);
+    bench_denoiseDump512(1, 0, true, true);
     // bench_denoiseDump1k(100, 10, false);
 
     // bench_sresDump(10, 10, false);
@@ -288,11 +288,11 @@ void bench_denoiseDump_gpu(int width, int height, int channels, std::string dump
     biases_gpu  = copy_to_device(mask_dst, biases.data(),  biases.size());
 
     // Release data on cpu memory that's not needed anymore
-    img_mat.release();
-    alb_mat.release();
-    nrm_mat.release();
-    weights.release();
-    biases.release();
+    // img_mat.release();
+    // alb_mat.release();
+    // nrm_mat.release();
+    // weights.release();
+    // biases.release();
 
     // Heat-Up iterations
     for (int i = 0; i < heat_up_iterations; i++) {

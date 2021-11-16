@@ -38,7 +38,7 @@ fn @sres_dump(in_mat: &Buffer, flattened_kernels: &Buffer, biases: &[f32], out: 
 #[export]
 fn @im2col_dump(in_buf: &Buffer, out_buf: &Buffer) -> () {
     let ksize = 3;
-    let out_channels = 70;
+    // let out_channels = 70;
     let in_channels = 70;
     let in_cols = 32;
     let in_rows = 32;
@@ -51,7 +51,7 @@ fn @im2col_dump(in_buf: &Buffer, out_buf: &Buffer) -> () {
     let acc = get_mat_acc(in_mat);
     let off = 0 as i64;
 
-    im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, acc, padding, *out_buf, off);
+    im2col_cpu(ksize, out_width, out_height, in_cols, in_rows, in_channels, acc, padding, *out_buf, off);
 }
 
 #[export]
@@ -62,7 +62,7 @@ fn @test(buf_ptr: &Buffer) -> () {
 
     let acc = cuda_accelerator(0);
 
-    for item in acc.exec((1, 1, 1), (1, 1, 1)) {
+    for _item in acc.exec((1, 1, 1), (1, 1, 1)) {
         bc_buf(0) = 4.51;
     }
     print_string("\n");

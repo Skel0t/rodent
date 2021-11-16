@@ -194,44 +194,15 @@ fn @matmul_cublas(a: Matrix, b: Matrix, device: i32, biases: fn(i32) -> f32, act
 
 fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
     let acc = cuda_accelerator(0);
-    let device = 0;
 
     let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
 
-    let d_a = runtime_alloc(runtime_device(1, device), 4 * a.rows as i64 * a.cols as i64 * a.channels as i64);
-    let d_b = runtime_alloc(runtime_device(1, device), 4 * b.rows as i64 * b.cols as i64 * b.channels as i64);
-    let d_c = runtime_alloc(runtime_device(1, device), 4 * c.rows as i64 * c.cols as i64 * c.channels as i64);
-
-    copy_host_to_dev(bitcast[&   [i8]](&(a.buf.data(4 * a.offset))), d_a, device, 4 * a.rows as i64 * a.cols as i64 * a.channels as i64);
-    copy_host_to_dev(bitcast[&   [i8]](&(b.buf.data(4 * b.offset))), d_b, device, 4 * b.rows as i64 * b.cols as i64 * b.channels as i64);
-
-    let a_buf = Buffer {
-        data = d_a,
-        size = 4 * a.rows as i64 * a.cols as i64 * a.channels as i64,
-        device = 0x01
-    };
-    let b_buf = Buffer {
-        data = d_b,
-        size = 4 * b.rows as i64 * b.cols as i64 * b.channels as i64,
-        device = 0x01
-    };
-    let c_buf = Buffer {
-        data = d_c,
-        size = 4 * c.rows as i64 * c.cols as i64 * c.channels as i64,
-        device = 0x01
-    };
-
-    let a_mat = make_matrix(a_buf, 0, MemoryFormat::HWC, 1, a.rows, a.cols);
-    let b_mat = make_matrix(b_buf, 0, MemoryFormat::HWC, 1, b.rows, b.cols);
-    let c_mat = make_matrix(c_buf, 0, MemoryFormat::HWC, 1, c.rows, c.cols);
-
-    let a_acc = get_mat_acc(a_mat);
-    let b_acc = get_mat_acc(b_mat);
-    let c_acc = get_mat_acc(c_mat);
+    let a_acc = get_mat_acc(a);
+    let b_acc = get_mat_acc(b);
+    let c_acc = get_mat_acc(c);
 
     let threads_x = 32;
     let threads_y = 32;
-
     let block = (threads_x, threads_y, 1);    // 1024 Threads per block
     let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), 1);
 
@@ -240,22 +211,12 @@ fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
         let col = work_item.bidx() * work_item.bdimx() + work_item.tidx();
 
         if row < c.rows && col < c.cols {
-            let mut v = 0 as f32;  // TODO: Add bias here
+            let mut v = biases(row);
             for i in range(0, a.cols) {
                 v = v + a_acc.read(row, i, 0) * b_acc.read(i, col, 0);
             }
-            c_acc.write(row, col, 0, v); // TODO: Apply act_fn here
+            c_acc.write(row, col, 0, act_fn(v));
         }
-    }
-
-    copy_dev_to_host(bitcast[&mut[i8]](&(c.buf.data(4 * c.offset))), d_c, device, 4 * c.rows as i64 * c.cols as i64 * c.channels as i64);
-
-    runtime_release(runtime_device(1, device), d_a);
-    runtime_release(runtime_device(1, device), d_b);
-    runtime_release(runtime_device(1, device), d_c);
-
-    for acc, v, row, col, chn in iterate_matrix_par(c) {
-        acc.write(row, col, chn, act_fn(v + biases(row)));  // 1 channel per row, thus access  row-th bias
     }
 
     c
@@ -294,4 +255,29 @@ fn @chw_to_hwc(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     }
 
     res
+}
+
+fn @chw_to_hwc_gpu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
+    let acc = cuda_accelerator(0);
+
+    let res_mat = make_matrix(buf, off, MemoryFormat::HWC, img_mat.channels, img_mat.rows, img_mat.cols);
+    let img_acc = get_mat_acc(img_mat);
+    let res_acc = get_mat_acc(res_mat);
+
+    let threads_x = 32;
+    let threads_y = 32;
+    let block = (threads_x, threads_y, 1);
+    let grid  = (round_up(res_mat.cols, threads_x), round_up(res_mat.rows, threads_y), res_mat.channels);
+
+    for work_item in acc.exec(grid, block) {
+        let col = work_item.bdimx() * work_item.bidx() + work_item.tidx();
+        let row = work_item.bdimy() * work_item.bidy() + work_item.tidy();
+        let chn = work_item.bidz();     // Will never overshoot, alway valid
+
+        if row < res_mat.rows && col < res_mat.cols {
+            res_acc.write(row, col, chn, img_acc.read(row, col, chn));
+        }
+    }
+
+    res_mat
 }

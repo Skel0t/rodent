@@ -1,6 +1,6 @@
 # Note: bench_traversal must be the first one, since it also generates a
 # C/C++ header file that is used by some other tools.
-add_subdirectory(bench_traversal)
+# add_subdirectory(bench_traversal)
 
 add_subdirectory(bench_convolution)
 # add_subdirectory(bench_interface)
