@@ -8,12 +8,12 @@
    allocated in C++. Hard coded constants. */
 #[export]
 fn @get_necessary_mem(width: i32, height: i32) -> i64 {
-    let size_im2col = (width as i64) * (height as i64) * (9 as i64) * (108 /*max in channels*/ as i64);  /* max size for im2col matrix */
-    let size_img    = (width as i64) * (height as i64) * (92 /*max out channels*/ as i64); /* max size to save matmul output */
+    let size_im2col = (width as i64) * (height as i64) * (9 as i64) * (73 /* max(<in channels>/<shrinked_size>) */ as i64);  /* max size for im2col matrix */
+    let size_img    = (width as i64) * (height as i64) * (32 /* max(<out channels>/<shrinked_size>) */ as i64); /* max size to save matmul output */
     /* sizes to save cross-connections */
-    let size_pool_3 = (width as i64) * (height as i64) * (32 as i64);
-    let size_pool_2 = (width as i64) * (height as i64) * (16 as i64);
-    let size_pool_1 = (width as i64) * (height as i64) * (12 as i64);
+    let size_pool_3 = (width as i64) * (height as i64) * (32 as i64) / (4 * 4 * 4);
+    let size_pool_2 = (width as i64) * (height as i64) * (16 as i64) / (4 * 4);
+    let size_pool_1 = (width as i64) * (height as i64) * (12 as i64) / (4);
 
     4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3)
 }

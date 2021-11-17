@@ -288,11 +288,11 @@ void bench_denoiseDump_gpu(int width, int height, int channels, std::string dump
     biases_gpu  = copy_to_device(mask_dst, biases.data(),  biases.size());
 
     // Release data on cpu memory that's not needed anymore
-    // img_mat.release();
-    // alb_mat.release();
-    // nrm_mat.release();
-    // weights.release();
-    // biases.release();
+    img_mat.release();
+    alb_mat.release();
+    nrm_mat.release();
+    weights.release();
+    biases.release();
 
     // Heat-Up iterations
     for (int i = 0; i < heat_up_iterations; i++) {
@@ -323,8 +323,6 @@ void bench_denoiseDump_gpu(int width, int height, int channels, std::string dump
         std::cout << "Correct Calculation!" << std::endl;
     }
 
-    // std::cout << "Benchmarking loop..." << std::endl;
-
     for (int i = 1; i < times; i++) {
         ticks = std::chrono::high_resolution_clock::now();
         denoise(&img_mat_gpu, &alb_mat_gpu, &nrm_mat_gpu, &nn_memory, &out_mat_gpu, width, height, &weights_gpu, &biases_gpu);
@@ -335,7 +333,6 @@ outer_break:
 
     out_mat.release();
     ref_mat.release();
-
 
     img_mat_gpu.release();
     alb_mat_gpu.release();

@@ -17,7 +17,9 @@ fn @sres_dump(in_mat: &Buffer, flattened_kernels: &Buffer, biases: &[f32], out: 
         matmul_counter = 0;
     }
 
-    conv2d(ksize, out_channels, kernel, biases_ho, id, mat, *out, 0, size_im2col);
+    let nn_int = get_cpu_nn();
+
+    conv2d(nn_int, ksize, out_channels, kernel, biases_ho, id, mat, *out, 0, size_im2col);
 
     if cpu_profiling_enabled {
         let total_counter = matmul_counter + im2col_counter;

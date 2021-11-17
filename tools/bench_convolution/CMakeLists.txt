@@ -7,6 +7,7 @@ set(NN_ART_SRCS
     ../../src/driver/denoiser/nn.art
     ../../src/driver/denoiser/pool_upsmp.art
     ../../src/driver/denoiser/utility.art
+    ../../src/driver/denoiser/mappings.art
     ../../src/core/common.impala
     ../../src/core/cpu_common.impala
     ../../src/core/sort.impala
@@ -14,6 +15,7 @@ set(NN_ART_SRCS
     ../../src/core/random.impala
     ../../src/core/matrix.impala
     ../../src/core/vector.impala
+    debug_helpers.art
     bench_convolution.art)
 
 set(NN_CPP_SRCS

@@ -49,6 +49,7 @@ set(RODENT_SRCS
     driver/denoiser/matrix.art
     driver/denoiser/nn.art
     driver/denoiser/pool_upsmp.art
+    driver/denoiser/mappings.art
     driver/denoiser/utility.art)
 
 set(DRIVER_SRCS

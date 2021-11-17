@@ -41,42 +41,6 @@ fn @im2col_cpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_he
     res_mat
 }
 
-/* Wrapper to allow simple matrix convoloution call without concatenation and need to get an accessor. */
-fn @conv2d(ksize: i32, out_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32,
-           act_fn: fn(f32) -> f32, img_mat: Matrix, buf: Buffer, off: i64, off_res: i64) -> Matrix {
-    cat_conv2d(ksize, out_channels, img_mat.channels, flattened_kernels, biases,
-               act_fn, img_mat.rows, img_mat.cols, get_mat_acc(img_mat), buf, off, off_res)
-}
-
-/* Performs a convolution, with the given parameters.
-   Since it works with the im2col function above, only stride 1 is supported at the moment.
-   As the padding is calculated inside this function, only convolutions that have
-   the same output size as input size are supported.
-   However, it is possible to give the padding as an argument to the function,
-   essentially allowing a padding of arbitrary size.
-   Since im2col sets the padding value to 0 only a zero-padding is supported.
-   But this can also be changed without much effort. */
-fn @cat_conv2d(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernels: Matrix,
-               biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, in_rows: i32, in_cols: i32,
-               img_acc: AccM, buf: Buffer, off: i64, off_res: i64) -> Matrix {
-    // insize == outsize if padding == ksize / 2.0 - 1
-    let padding    = ksize / 2;
-    let out_width  = (in_cols + 2 * padding - ksize) + 1;
-    let out_height = (in_rows + 2 * padding - ksize) + 1;
-
-    let mut im2col_mat : Matrix;
-    let mut prod : Matrix;
-    cpu_profile(&mut im2col_counter, @||
-        { im2col_mat = im2col_cpu(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off); }
-    );
-    cpu_profile(&mut matmul_counter, @||
-        { prod       = matmul_cpu(flattened_kernels, im2col_mat, biases, act_fn, buf, off_res); }
-    );
-
-    // Reshape matrix for future use, no values are changed
-    make_matrix(prod.buf, prod.offset, MemoryFormat::CHW, out_channels, out_height, out_width)
-}
-
 fn @im2col_gpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_height: i32, channels: i32,
                img_acc: AccM, padding: i32, buf: Buffer, off: i64) -> Matrix {
     let acc = cuda_accelerator(0);
@@ -96,7 +60,7 @@ fn @im2col_gpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_he
         let idx = work_item.bdimx() * work_item.bidx() + work_item.tidx();
         let chn = work_item.bdimy() * work_item.bidy() + work_item.tidy();
 
-        if idx < img_s && chn < channels {
+        if chn < channels && idx < img_s {
             // Valid thread -> do the same as in cpu code
             let r = idx / out_width;
             let c = idx % out_width;
@@ -127,13 +91,22 @@ fn @im2col_gpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_he
     res_mat
 }
 
-fn @conv2d_gpu(ksize: i32, out_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32,
+/* Wrapper to allow simple matrix convoloution call without concatenation and need to get an accessor. */
+fn @conv2d(nn_int: NNInt, ksize: i32, out_channels: i32, flattened_kernels: Matrix, biases: fn(i32) -> f32,
            act_fn: fn(f32) -> f32, img_mat: Matrix, buf: Buffer, off: i64, off_res: i64) -> Matrix {
-    cat_conv2d_gpu(ksize, out_channels, img_mat.channels, flattened_kernels, biases,
+    cat_conv2d(nn_int, ksize, out_channels, img_mat.channels, flattened_kernels, biases,
                act_fn, img_mat.rows, img_mat.cols, get_mat_acc(img_mat), buf, off, off_res)
 }
 
-fn @cat_conv2d_gpu(ksize: i32, out_channels: i32, in_channels: i32, flattened_kernels: Matrix,
+/* Performs a convolution, with the given parameters.
+   Since it works with the im2col function above, only stride 1 is supported at the moment.
+   As the padding is calculated inside this function, only convolutions that have
+   the same output size as input size are supported.
+   However, it is possible to give the padding as an argument to the function,
+   essentially allowing a padding of arbitrary size.
+   Since im2col sets the padding value to 0 only a zero-padding is supported.
+   But this can also be changed without much effort. */
+fn @cat_conv2d(nn_int: NNInt, ksize: i32, out_channels: i32, in_channels: i32, flattened_kernels: Matrix,
                biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, in_rows: i32, in_cols: i32,
                img_acc: AccM, buf: Buffer, off: i64, off_res: i64) -> Matrix {
     // insize == outsize if padding == ksize / 2.0 - 1
@@ -144,10 +117,10 @@ fn @cat_conv2d_gpu(ksize: i32, out_channels: i32, in_channels: i32, flattened_ke
     let mut im2col_mat : Matrix;
     let mut prod : Matrix;
     cpu_profile(&mut im2col_counter, @||
-        { im2col_mat = im2col_gpu(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off); }
+        { im2col_mat = nn_int.im2col(ksize, out_width, out_height, in_cols, in_rows, in_channels, img_acc, padding, buf, off); }
     );
     cpu_profile(&mut matmul_counter, @||
-        { prod       = matmul_gpu(flattened_kernels, im2col_mat, biases, act_fn, buf, off_res); }
+        { prod       = nn_int.matmul(flattened_kernels, im2col_mat, biases, act_fn, buf, off_res); }
     );
 
     // Reshape matrix for future use, no values are changed
