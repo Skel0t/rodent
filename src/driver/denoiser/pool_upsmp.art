@@ -7,31 +7,27 @@
    from another pooling thread. To pool in-place, please use pool_inplace. */
 fn @pool_cpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, buf: Buffer, off: i64) -> Matrix {
     let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
+    let img_acc = get_mat_acc(img_mat);
 
-    let d_a = runtime_alloc(runtime_device(1, 0), 4 * img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64);
-    let d_b = runtime_alloc(runtime_device(1, 0),     img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64);
+    cpu_profile(&mut pool_counter, || {
+        for r_acc, _v, row, col, chn in iterate_matrix_par(res_mat) {
+            /* Needs at least size-many elements.
+              Although known at compile-time AnyDSL does only support magic numbers here. */
+            let mut v : [f32 * 4];
+            fn @values(idx: i32) -> f32 {
+                v(idx)
+            }
 
-    copy_host_to_dev(bitcast[&[i8]](&(img_mat.buf.data(4 * img_mat.offset))), d_a, 0, 4 * img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64);
+            for r in unroll(0, size) {
+                for c in unroll(0, size) {
+                    v(r * size + c) = img_acc.read(size * row + r, size * col + c, chn);
+                }
+            }
 
-    let a_buf = Buffer {
-        data = d_a,
-        size = 4 * img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64,
-        device = 0x01
-    };
-    let b_buf = Buffer {
-        data = d_b,
-        size =     img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64,
-        device = 0x01
-    };
-
-    let a_mat = make_matrix(a_buf, 0, img_mat.format, img_mat.channels, img_mat.rows, img_mat.cols);
-
-    let d_res_mat = pool_gpu(a_mat, size, pooling_fn, b_buf, 0);
-
-    copy_dev_to_host(bitcast[&mut[i8]](&(res_mat.buf.data(4 * res_mat.offset))), d_b, 0, img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64);
-
-    runtime_release(runtime_device(1, 0), d_a);
-    runtime_release(runtime_device(1, 0), d_b);
+            let val = pooling_fn(values);
+            r_acc.write(row, col, chn, val);
+        }
+    });
 
     res_mat
 }

@@ -7,7 +7,7 @@ extern "C" {
         cublasHandle_t handle;
         cublasCreate(&handle);
 
-        float a = 1.f, b = 1.f;
+        float a = 1.f, b = 0.f;
 
         cublasSgemm(handle,
                     CUBLAS_OP_N,   // no transpose

@@ -2,7 +2,7 @@
 #[import(cc = "C")] fn mkl_add_constant(_n: i32, _a: &[f32], _val: f32, _res: &mut[f32]) -> ();
 #[import(cc = "C")] fn mkl_add_elemwise(_n: i32, _a: &[f32], _b: &[f32], _c: &mut[f32]) -> ();
 #[import(cc = "C")] fn mkl_apply_relu(_n: i32, _a: &[f32], _c: &mut[f32]) -> ();
-#[import(cc = "C")] fn cublas_gemm(_d_A: &[f32], d_B: &[f32], _d_C: &[f32], a_width: i32, a_height: i32, b_width: i32, device: i32) -> ();
+#[import(cc = "C")] fn cublas_gemm(_d_A: &[f32], _d_B: &[f32], _d_C: &[f32], _a_width: i32, _a_height: i32, _b_width: i32, _device: i32) -> ();
 
 /* Returns necessary memory for the denoising neural network, so that it can be
    allocated in C++. Hard coded constants. */
