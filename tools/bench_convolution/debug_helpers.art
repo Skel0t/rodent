@@ -29,7 +29,7 @@ fn @pool_cpu_on_gpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -
 
     let a_mat = make_matrix(a_buf, 0, img_mat.format, img_mat.channels, img_mat.rows, img_mat.cols);
 
-    let d_res_mat = pool_gpu(a_mat, size, pooling_fn, b_buf, 0);
+    pool_gpu(a_mat, size, pooling_fn, b_buf, 0);
 
     copy_dev_to_host(bitcast[&mut[i8]](&(res_mat.buf.data(4 * res_mat.offset))), d_b, 0, img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64);
 

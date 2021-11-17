@@ -92,7 +92,7 @@ fn @parallel_step(body: fn(i32) -> ()) {
         let iterations = (end - beg) / step;
         for i in parallel(0, 0, iterations) {
             let cur = beg + i * step;
-            @@body(cur)
+            @body(cur)
         }
     }
 
