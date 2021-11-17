@@ -2,6 +2,10 @@
 #include <cuda_runtime.h>
 
 extern "C" {
+    /* Use identity (AB)^t = B^t A^t = C^t and that transposing only changes
+       interpretation from row-major to column-major and vice versa.
+
+       Necessary since cublas expects column-major while we use row-major. */
     void cublas_gemm(float* d_A, float* d_B, float* d_C, int a_width, int a_height, int b_width, int device) {
         cudaSetDevice(device);
         cublasHandle_t handle;

@@ -155,7 +155,7 @@ fn @make_denoise_nn(kernels: Buffer, biases: Buffer, width: i32, height: i32) ->
     /* Alltogether, multiplied by 4, since we are using 32bit floats. */
     let necess_mem = 4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3);
 
-    let nn_int = get_cuda_nn();
+    let nn_int = get_cpu_nn();
 
     fn @forward_denoise(img: Buffer, albedo: Buffer, normal: Buffer, mem: Buffer, out_buf: Buffer) -> () {
 

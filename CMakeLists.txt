@@ -108,5 +108,5 @@ endif()
 include(CTest)
 find_package(ImageMagick COMPONENTS compare QUIET)
 
-# add_subdirectory(src)
+add_subdirectory(src)
 add_subdirectory(tools)
