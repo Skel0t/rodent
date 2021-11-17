@@ -165,30 +165,35 @@ fn @matmul_oneapi(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
 }
 
 /* a and b need to have same channel format. */
-fn @matmul_cublas(a: Matrix, b: Matrix, device: i32, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
+fn @matmul_cublas(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
+    let acc = cuda_accelerator(0);
+
+    let device = 0;
     let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let c_acc = get_mat_acc(c);
 
-    let d_a = runtime_alloc(runtime_device(1, device), 4 * a.rows as i64 * a.cols as i64 * a.channels as i64);
-    let d_b = runtime_alloc(runtime_device(1, device), 4 * b.rows as i64 * b.cols as i64 * b.channels as i64);
-    let d_c = runtime_alloc(runtime_device(1, device), 4 * c.rows as i64 * c.cols as i64 * c.channels as i64);
-
-    copy_host_to_dev(bitcast[&   [i8]](&(a.buf.data(4 * a.offset))), d_a, device, 4 * a.rows as i64 * a.cols as i64 * a.channels as i64);
-    copy_host_to_dev(bitcast[&   [i8]](&(b.buf.data(4 * b.offset))), d_b, device, 4 * b.rows as i64 * b.cols as i64 * b.channels as i64);
+    let threads_x = 32;
+    let threads_y = 32;
+    let block = (threads_x, threads_y, 1);
+    let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), c.channels);
 
     cublas_gemm(
-        /*a*/ bitcast[&   [f32]](d_a),
-        /*b*/ bitcast[&   [f32]](d_b),
-        /*c*/ bitcast[&mut[f32]](d_c),
+        /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))),
+        /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))),
+        /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))),
         /*lda*/ a.cols, /*ldb*/ a.rows, /*ldc*/ b.cols, device);
 
-    copy_dev_to_host(bitcast[&mut[i8]](&(c.buf.data(4 * c.offset))), d_c, device, 4 * c.rows as i64 * c.cols as i64 * c.channels as i64);
-    runtime_release(runtime_device(1, device), d_a);
-    runtime_release(runtime_device(1, device), d_b);
-    runtime_release(runtime_device(1, device), d_c);
+    for work_item in acc.exec(grid, block) {
+        let col = work_item.bdimx() * work_item.bidx() + work_item.tidx();
+        let row = work_item.bdimy() * work_item.bidy() + work_item.tidy();
+        let chn = work_item.bidz();     // Will never overshoot, always valid
 
-    for acc, v, row, col, chn in iterate_matrix_par(c) {
-        acc.write(row, col, chn, act_fn(v + biases(row)));  // 1 channel per row, thus access  row-th bias
+        if row < c.rows && col < c.cols {
+            // Valid thread, do same calculation as in cpu here
+            c_acc.write(row, col, chn, act_fn(c_acc.read(row, col, chn) + biases(row)));  // 1 channel per row, thus access  row-th bias
+        }
     }
+
     c
 }
 
@@ -203,7 +208,7 @@ fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
 
     let threads_x = 32;
     let threads_y = 32;
-    let block = (threads_x, threads_y, 1);    // 1024 Threads per block
+    let block = (threads_x, threads_y, 1);    // 32 * 32 * 1 = 1024 Threads per block
     let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), 1);
 
     for work_item in acc.exec(grid, block) {
@@ -222,16 +227,8 @@ fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
     c
 }
 
-fn @copy_host_to_dev(host_memory: &[i8], device_memory: &mut [i8], dev: i32, size: i64) -> () {
-    runtime_copy(runtime_device(0, 0), host_memory, 0, runtime_device(1, dev), device_memory, 0, size);
-}
-
-fn @copy_dev_to_host(host_memory: &mut [i8], device_memory: &[i8], dev: i32, size: i64) -> () {
-    runtime_copy(runtime_device(1, dev), device_memory, 0, runtime_device(0, 0), host_memory, 0, size);
-}
-
 /* Matrices a and b need to have the same dimensions. */
-fn @add_element_wise(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
+fn @add_element_wise_cpu(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
     let res = make_matrix(buf, off, a.format, a.channels, a.rows, a.cols);
 
     let res_acc  = get_mat_acc(res);
@@ -245,7 +242,7 @@ fn @add_element_wise(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
 }
 
 /* Copies the given matrix to the given buffer and offset in HWC format. */
-fn @chw_to_hwc(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
+fn @chw_to_hwc_cpu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     let res = make_matrix(buf, off, MemoryFormat::HWC, img_mat.channels, img_mat.rows, img_mat.cols);
 
     let img_acc = get_mat_acc(img_mat);
@@ -272,7 +269,7 @@ fn @chw_to_hwc_gpu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     for work_item in acc.exec(grid, block) {
         let col = work_item.bdimx() * work_item.bidx() + work_item.tidx();
         let row = work_item.bdimy() * work_item.bidy() + work_item.tidy();
-        let chn = work_item.bidz();     // Will never overshoot, alway valid
+        let chn = work_item.bidz();     // Will never overshoot, always valid
 
         if row < res_mat.rows && col < res_mat.cols {
             res_acc.write(row, col, chn, img_acc.read(row, col, chn));

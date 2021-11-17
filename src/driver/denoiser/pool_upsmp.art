@@ -1,7 +1,43 @@
 /* Performs a pooling on the given matrix with receptive field "size x size" and
    stride "size". The pooling_fn is a function that operates on the values in the
-   receptive field. The values are given in the order left to right, top to bottom. */
-   fn @pool(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, buf: Buffer, off: i64) -> Matrix {
+   receptive field. The values are given in the order left to right, top to bottom.
+
+   Does NOT allow pooling in-place, as it is using parallelism and by pooling
+   in-place, other threads might read wrong values that were written in-place
+   from another pooling thread. To pool in-place, please use pool_inplace. */
+fn @pool_cpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, buf: Buffer, off: i64) -> Matrix {
+    let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
+
+    let d_a = runtime_alloc(runtime_device(1, 0), 4 * img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64);
+    let d_b = runtime_alloc(runtime_device(1, 0),     img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64);
+
+    copy_host_to_dev(bitcast[&[i8]](&(img_mat.buf.data(4 * img_mat.offset))), d_a, 0, 4 * img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64);
+
+    let a_buf = Buffer {
+        data = d_a,
+        size = 4 * img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64,
+        device = 0x01
+    };
+    let b_buf = Buffer {
+        data = d_b,
+        size =     img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64,
+        device = 0x01
+    };
+
+    let a_mat = make_matrix(a_buf, 0, img_mat.format, img_mat.channels, img_mat.rows, img_mat.cols);
+
+    let d_res_mat = pool_gpu(a_mat, size, pooling_fn, b_buf, 0);
+
+    copy_dev_to_host(bitcast[&mut[i8]](&(res_mat.buf.data(4 * res_mat.offset))), d_b, 0, img_mat.rows as i64 * img_mat.cols as i64 * img_mat.channels as i64);
+
+    runtime_release(runtime_device(1, 0), d_a);
+    runtime_release(runtime_device(1, 0), d_b);
+
+    res_mat
+}
+
+/* Does the same as pool_cpu, but without parallelism and therefore allows in-place pooling. */
+fn @pool_cpu_inplace(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, buf: Buffer, off: i64) -> Matrix {
     let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
     let img_acc = get_mat_acc(img_mat);
 
@@ -27,6 +63,7 @@
     res_mat
 }
 
+/* Like pool_cpu, just on the GPU. */
 fn @pool_gpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, buf: Buffer, off: i64) -> Matrix {
     let acc = cuda_accelerator(0);
 
