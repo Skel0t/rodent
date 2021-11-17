@@ -118,40 +118,6 @@ static bool handle_events(uint32_t& iter, Camera& cam) {
     return false;
 }
 
-// gamma corrects the RGB image cointained in data and divides the colors by iter (in place)
-static void gamma_correct(size_t width, size_t height, uint32_t iter, float* data, bool doGamma) {
-    auto inv_iter = 1.0f / iter;
-    auto inv_gamma = doGamma ? 1.0f / 2.2f : 1.0f;
-
-    for (size_t y = 0; y < height; ++y) {
-        for (size_t x = 0; x < width; ++x) {
-            auto idx = (y * width + x);
-            auto r = data[idx * 3 + 0];
-            auto g = data[idx * 3 + 1];
-            auto b = data[idx * 3 + 2];
-
-            data[idx * 3 + 0] = clamp(std::pow(r * inv_iter, inv_gamma), 0.0f, 1.0f);
-            data[idx * 3 + 1] = clamp(std::pow(g * inv_iter, inv_gamma), 0.0f, 1.0f);
-            data[idx * 3 + 2] = clamp(std::pow(b * inv_iter, inv_gamma), 0.0f, 1.0f);
-        }
-    }
-}
-
-static void clamp_image(size_t width, size_t height, float* data) {
-    for (size_t y = 0; y < height; ++y) {
-        for (size_t x = 0; x < width; ++x) {
-            auto idx = (y * width + x);
-            auto r = data[idx * 3 + 0];
-            auto g = data[idx * 3 + 1];
-            auto b = data[idx * 3 + 2];
-
-            data[idx * 3 + 0] = clamp(r, 0.0f, 1.0f);
-            data[idx * 3 + 1] = clamp(g, 0.0f, 1.0f);
-            data[idx * 3 + 2] = clamp(b, 0.0f, 1.0f);
-        }
-    }
-}
-
 static void update_texture_raw(uint32_t* buf, SDL_Texture* texture, size_t width, size_t height, float* outputPtr) {
     for (size_t y = 0; y < height; ++y) {
         for (size_t x = 0; x < width; ++x) {
@@ -187,6 +153,41 @@ static void update_texture(uint32_t* buf, SDL_Texture* texture, size_t width, si
     SDL_UpdateTexture(texture, nullptr, buf, width * sizeof(uint32_t));
 }
 #endif
+
+// gamma corrects the RGB image cointained in data and divides the colors by iter (in place)
+static void gamma_correct(size_t width, size_t height, uint32_t iter, float* data, bool doGamma) {
+    auto inv_iter = 1.0f / iter;
+    auto inv_gamma = doGamma ? 1.0f / 2.2f : 1.0f;
+
+    for (size_t y = 0; y < height; ++y) {
+        for (size_t x = 0; x < width; ++x) {
+            auto idx = (y * width + x);
+            auto r = data[idx * 3 + 0];
+            auto g = data[idx * 3 + 1];
+            auto b = data[idx * 3 + 2];
+
+            data[idx * 3 + 0] = clamp(std::pow(r * inv_iter, inv_gamma), 0.0f, 1.0f);
+            data[idx * 3 + 1] = clamp(std::pow(g * inv_iter, inv_gamma), 0.0f, 1.0f);
+            data[idx * 3 + 2] = clamp(std::pow(b * inv_iter, inv_gamma), 0.0f, 1.0f);
+        }
+    }
+}
+
+static void clamp_image(size_t width, size_t height, float* data) {
+    for (size_t y = 0; y < height; ++y) {
+        for (size_t x = 0; x < width; ++x) {
+            auto idx = (y * width + x);
+            auto r = data[idx * 3 + 0];
+            auto g = data[idx * 3 + 1];
+            auto b = data[idx * 3 + 2];
+
+            data[idx * 3 + 0] = clamp(r, 0.0f, 1.0f);
+            data[idx * 3 + 1] = clamp(g, 0.0f, 1.0f);
+            data[idx * 3 + 2] = clamp(b, 0.0f, 1.0f);
+        }
+    }
+}
+
 // Saves the RGB image (colors in [0;1]) contained in data
 static void save_image(const std::string& out_file, size_t width, size_t height, float* data) {
     ImageRgba32 img;
@@ -342,11 +343,9 @@ int main(int argc, char** argv) {
     std::vector<double> samples_sec;
     live = live && (dns != "");
 
-#ifndef DISABLE_GUI
     anydsl::Array<float> pix, alb, nrm, outputPtr;
-    anydsl::Array<float> weights;
+    anydsl::Array<float> weights, biases;
     anydsl::Array<uint8_t> memory;
-    float* biases;
 
     if (dns != "") {
         read_in(&weights, &biases);
@@ -357,7 +356,6 @@ int main(int argc, char** argv) {
         nrm = anydsl::Array<float>(img_s);
         outputPtr = anydsl::Array<float>(img_s);
     }
-#endif
     while (!done) {
 #ifndef DISABLE_GUI
         done = handle_events(iter, cam);
@@ -385,7 +383,7 @@ int main(int argc, char** argv) {
             gamma_correct(width, height, iter, alb.data(), true);
             gamma_correct(width, height, iter, nrm.data(), false);
 
-            denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, biases);
+            denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases);
 
             clamp_image(width, height, outputPtr.data());
         }
@@ -451,7 +449,7 @@ int main(int argc, char** argv) {
             anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s * sizeof(float));
             anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s * sizeof(float));
 
-            denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, biases);
+            denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases);
             clamp_image(width, height, outputPtr.data());
 
             save_image("denoised.png", width, height, outputPtr.data());
@@ -467,7 +465,7 @@ int main(int argc, char** argv) {
         pix.release();
         nrm.release();
         alb.release();
-        free(biases);
+        biases.release();
     }
     cleanup_interface();
 
