@@ -66,8 +66,8 @@ fn @fastlog2(x: f32) -> f32 {
 }
 
 fn @fastpow2(p: f32) -> f32 {
-    let offset = if p < 0:f32    { 1:f32    } else { 0:f32 };
-    let clipp  = if p < -126:f32 { -126:f32 } else { p };
+    let offset = select(p < 0:f32, 1:f32, 0:f32);
+    let clipp  = select(p < -126:f32, -126:f32, p);
     let w = clipp as i32;
     let z = clipp - (w as f32) + offset;
     let v = ((1:u32 << 23:u32) as f32 * (clipp + 121.2740575 + 27.7280233 / (4.84252568 - z) - 1.49012907 * z)) as i32;

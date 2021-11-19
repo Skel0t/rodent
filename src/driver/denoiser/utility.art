@@ -12,10 +12,10 @@ fn @max_4(values: fn(i32) -> f32) -> f32 {
     let a = values(2);
     let b = values(3);
 
-    let max_xy = if x > y { x } else { y };
-    let max_ab = if a > b { a } else { b };
+    let max_xy = select(x > y, x, y);
+    let max_ab = select(a > b, a, b);
 
-    if max_xy > max_ab { max_xy } else { max_ab }
+    select(max_xy > max_ab, max_xy, max_ab)
 }
 
 /* Returns minimum of the two integer arguments. */
