@@ -1,6 +1,6 @@
 /* Struct to return a forward propagation of a denoising neural network along
    with its memory consumption during computation. */
-struct NN_DEN {
+struct NNDEN {
     forward : fn(Buffer, Buffer, Buffer, Buffer, Buffer) -> (),
     necess_mem : i64
 }
@@ -9,7 +9,10 @@ struct NN_DEN {
    and trained by Hendrik Junkawitsch as part of his bachelors thesis.
    The network's design is pretty much the same as OIDN, only small changes to
    the number of feature maps were made. */
-fn @make_denoise_nn(kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NN_DEN {
+fn @make_denoise_nn(kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNDEN {
+    /* Change configuration of what backend to use here */
+    let nn_int = get_cuda_nn();
+
     /* Kernel size and poolsize is the same for every convolution / pooling layer */
     let ksize    = 3;
     let ksize_sq = ksize * ksize;
@@ -155,8 +158,6 @@ fn @make_denoise_nn(kernels: Buffer, biases: Buffer, width: i32, height: i32) ->
     /* Alltogether, multiplied by 4, since we are using 32bit floats. */
     let necess_mem = 4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3);
 
-    let nn_int = get_cpu_nn();
-
     fn @forward_denoise(img: Buffer, albedo: Buffer, normal: Buffer, mem: Buffer, out_buf: Buffer) -> () {
 
         if cpu_profiling_enabled {
@@ -269,5 +270,5 @@ fn @make_denoise_nn(kernels: Buffer, biases: Buffer, width: i32, height: i32) ->
         }
     }
 
-    NN_DEN { forward = forward_denoise, necess_mem = necess_mem }
+    NNDEN { forward = forward_denoise, necess_mem = necess_mem }
 }

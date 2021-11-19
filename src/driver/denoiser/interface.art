@@ -25,3 +25,32 @@ fn @forward_denoise(img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &
     let nn = make_denoise_nn(*kernels, *biases, width, height);
     nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
 }
+
+/* Divide image by given number of samples and gamma_correct if argument given.
+   Necessary for GPU live denoising. */
+#[export]
+fn @gamma_correct_gpu(width: i32, height: i32, iter: i32, data: &mut[f32], do_gamma: bool) -> () {
+    let acc = cuda_accelerator(0);
+    let inv_iter : f32  = 1.0 / (iter as f32);
+    let inv_gamma : f32 = if do_gamma { 1.0 / 2.2 } else { 1.0 };
+
+    let clamp = @ |x: f32| if x > 1.0 { 1.0 } else if x < 0.0 { 0.0 } else { x };
+
+    let threads_x = 32;
+    let threads_y = 32;
+    let block = (threads_x, threads_y, 1);
+    let grid  = (round_up(width, threads_x), round_up(height, threads_y), 3);
+
+    for work_item in acc.exec(grid, block) {
+        let col = work_item.bdimx() * work_item.bidx() + work_item.tidx();
+        let row = work_item.bdimy() * work_item.bidy() + work_item.tidy();
+        let chn = work_item.bidz();     // Will never overshoot, always valid
+
+        if row < height && col < width {
+            // Valid thread, do same calculation as in cpu here
+            let idx = 3 * (row * width + col) + chn;
+
+            data(idx) = clamp(fastpow(data(idx) * inv_iter, inv_gamma));
+        }
+    }
+}

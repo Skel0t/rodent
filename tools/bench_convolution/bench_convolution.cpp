@@ -28,7 +28,7 @@ anydsl::Array<T> copy_to_device(int32_t dev, const T* data, size_t n) {
 
 int main() {
     bench_denoiseDump512(1, 0, true, true);
-    // bench_denoiseDump1k(100, 10, false);
+    bench_denoiseDump1k(1, 0, true, true);
 
     // bench_sresDump(10, 10, false);
 
@@ -308,6 +308,14 @@ void bench_denoiseDump_gpu(int width, int height, int channels, std::string dump
     if (correct_check) {
         // copy result back to cpu
         anydsl_copy(mask_dst, out_mat_gpu.data(), 0, 0, out_mat.data(), 0, sizeof(float) * out_mat.size());
+
+        int row = 20;
+        int col = 0;
+        int chn = 1;
+        std::cout << "Out: " << out_mat.data()[row * width * channels + col * channels + chn]
+                << "\tRef: " << ref_mat.data()[chn * width * height + row * width + col] << std::endl;
+
+
         for (size_t chn = 0; chn < channels; chn++) {
             for (size_t row = 0; row < height; row++) {
                 for (size_t col = 0; col < width; col++) {
