@@ -334,6 +334,10 @@ int main(int argc, char** argv) {
     _mm_setcsr(_mm_getcsr() | (_MM_FLUSH_ZERO_ON | _MM_DENORMALS_ZERO_ON));
 #endif
 
+    const anydsl::Platform denoising_platform = anydsl::Platform::Cuda;
+    const anydsl::Device denoising_device = anydsl::Device(0);
+    const int32_t dev_plat_mask = anydsl::make_device(denoising_platform, denoising_device);
+
     const int img_s = width * height * 3;
     auto spp = get_spp();
     bool done = false;
@@ -346,16 +350,39 @@ int main(int argc, char** argv) {
     anydsl::Array<float> pix, alb, nrm, outputPtr;
     anydsl::Array<float> weights, biases;
     anydsl::Array<uint8_t> memory;
+    anydsl::Array<float> frame_pointer_denoising;
+    anydsl::Array<float> weights_gpu;
+    anydsl::Array<float> biases_gpu;
 
+    /* If denoising enabled, allocate and fill all necessary buffers to denoise. */
     if (dns != "") {
         read_in(&weights, &biases);
-        memory = anydsl::Array<uint8_t>(get_necessary_mem(width, height));
 
-        pix = anydsl::Array<float>(img_s);
-        alb = anydsl::Array<float>(img_s);
-        nrm = anydsl::Array<float>(img_s);
-        outputPtr = anydsl::Array<float>(img_s);
+        memory = anydsl::Array<uint8_t>(denoising_platform, denoising_device, get_necessary_mem(width, height));
+
+        pix       = anydsl::Array<float>(denoising_platform, denoising_device, img_s);
+        alb       = anydsl::Array<float>(denoising_platform, denoising_device, img_s);
+        nrm       = anydsl::Array<float>(denoising_platform, denoising_device, img_s);
+        outputPtr = anydsl::Array<float>(denoising_platform, denoising_device, img_s);
+
+        // Necessary to show live denoised image when denoising on GPU
+        if (dev_plat_mask != 0) {
+            weights_gpu = anydsl::Array<float>(dev_plat_mask, reinterpret_cast<float*>(anydsl_alloc(dev_plat_mask, weights.size() * sizeof(float))), weights.size());
+            biases_gpu  = anydsl::Array<float>(dev_plat_mask, reinterpret_cast<float*>(anydsl_alloc(dev_plat_mask, biases.size() * sizeof(float))),  biases.size());
+
+            anydsl_copy(0, weights.data(), 0, dev_plat_mask, weights_gpu.data(), 0, weights.size() * sizeof(float));
+            anydsl_copy(0, biases.data(),  0, dev_plat_mask, biases_gpu.data(),  0, biases.size()  * sizeof(float));
+
+            weights.release();
+            biases.release();
+
+            weights = anydsl::Array<float>(weights_gpu.device(), weights_gpu.data(), weights_gpu.size());
+            biases  = anydsl::Array<float>(biases_gpu.device(),  biases_gpu.data(),  biases_gpu.size());
+
+            frame_pointer_denoising = anydsl::Array<float>(img_s);
+        }
     }
+
     while (!done) {
 #ifndef DISABLE_GUI
         done = handle_events(iter, cam);
@@ -375,17 +402,28 @@ int main(int argc, char** argv) {
         auto ticks = std::chrono::high_resolution_clock::now();
         render(&settings, iter++);
         if (live) {
-            anydsl_copy(0, get_pixels(),     0, 0, pix.data(), 0, img_s * sizeof(float));
-            anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s * sizeof(float));
-            anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s * sizeof(float));
+            anydsl_copy(0, get_pixels(),     0, dev_plat_mask, pix.data(), 0, img_s * sizeof(float));
+            anydsl_copy(0, get_alb_pixels(), 0, dev_plat_mask, alb.data(), 0, img_s * sizeof(float));
+            anydsl_copy(0, get_nrm_pixels(), 0, dev_plat_mask, nrm.data(), 0, img_s * sizeof(float));
 
-            gamma_correct(width, height, iter, pix.data(), true);
-            gamma_correct(width, height, iter, alb.data(), true);
-            gamma_correct(width, height, iter, nrm.data(), false);
+            if (dev_plat_mask == 0) {
+                gamma_correct(width, height, iter, pix.data(), true);
+                gamma_correct(width, height, iter, alb.data(), true);
+                gamma_correct(width, height, iter, nrm.data(), false);
+            } else {
+                gamma_correct_gpu(width, height, iter, pix.data(), true);
+                gamma_correct_gpu(width, height, iter, alb.data(), true);
+                gamma_correct_gpu(width, height, iter, nrm.data(), false);
+            }
 
             denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases);
 
-            clamp_image(width, height, outputPtr.data());
+            if (dev_plat_mask == 0) {
+                clamp_image(width, height, outputPtr.data());
+            } else {
+                anydsl_copy(dev_plat_mask, outputPtr.data(), 0, 0, frame_pointer_denoising.data(), 0, outputPtr.size() * sizeof(float));
+                clamp_image(width, height, frame_pointer_denoising.data());
+            }
         }
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
 
@@ -411,7 +449,11 @@ int main(int argc, char** argv) {
 
 #ifndef DISABLE_GUI
         if(live) {
-            update_texture_raw(buf.get(), texture, width, height, outputPtr.data());
+            if (dev_plat_mask == 0) {
+                update_texture_raw(buf.get(), texture, width, height, outputPtr.data());
+            } else {
+                update_texture_raw(buf.get(), texture, width, height, frame_pointer_denoising.data());
+            }
         } else {
             update_texture(buf.get(), texture, width, height, iter);
         }
@@ -445,14 +487,20 @@ int main(int argc, char** argv) {
             info("Image saved to '", out_file, "'");
         }
         if(dns != "") {
-            anydsl_copy(0, get_pixels(),     0, 0, pix.data(), 0, img_s * sizeof(float));
-            anydsl_copy(0, get_alb_pixels(), 0, 0, alb.data(), 0, img_s * sizeof(float));
-            anydsl_copy(0, get_nrm_pixels(), 0, 0, nrm.data(), 0, img_s * sizeof(float));
+            anydsl_copy(0, get_pixels(),     0, dev_plat_mask, pix.data(), 0, img_s * sizeof(float));
+            anydsl_copy(0, get_alb_pixels(), 0, dev_plat_mask, alb.data(), 0, img_s * sizeof(float));
+            anydsl_copy(0, get_nrm_pixels(), 0, dev_plat_mask, nrm.data(), 0, img_s * sizeof(float));
 
             denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases);
-            clamp_image(width, height, outputPtr.data());
 
-            save_image("denoised.png", width, height, outputPtr.data());
+            if (dev_plat_mask == 0) {
+                clamp_image(width, height, outputPtr.data());
+                save_image("denoised.png", width, height, outputPtr.data());
+            } else {
+                anydsl_copy(dev_plat_mask, outputPtr.data(), 0, 0, frame_pointer_denoising.data(), 0, img_s * sizeof(float));
+                clamp_image(width, height, frame_pointer_denoising.data());
+                save_image("denoised.png", width, height, frame_pointer_denoising.data());
+            }
 
             info("Denoising done! Saved to '", dns, "'");
         }
@@ -466,6 +514,9 @@ int main(int argc, char** argv) {
         nrm.release();
         alb.release();
         biases.release();
+        if (dev_plat_mask != 0) {
+            frame_pointer_denoising.release();
+        }
     }
     cleanup_interface();
 
