@@ -12,15 +12,15 @@ int main() {
        when changing gpu/cpu. */
 
     /* CPU BENCHMARKING */
-    // bench_sresDump256(100, 10, false, false);
     // bench_sresDump512(100, 10, false, false);
+    // bench_sresDump1k(100, 10, false, false);
 
     // bench_denoiseDump512(100, 10, false, false);
     // bench_denoiseDump1k(100, 10, false, false);
 
     /* GPU BENCHMARKING */
-    // bench_sresDump256(1000, 100, false, true);
-    // bench_sresDump512(600, 100, false, true);
+    // bench_sresDump512(1000, 100, false, true);
+    // bench_sresDump1k(600, 100, false, true);
 
     // bench_denoiseDump512(1000, 100, false, true);
     // bench_denoiseDump1k(1000, 100, false, true);
@@ -467,11 +467,11 @@ outer_break:
  * Output size: 512x512
  * Free memory required: 1.6GB
  */
-void bench_sresDump256(int times, int heatup_iterations, bool correct_check, bool gpu) {
+void bench_sresDump512(int times, int heatup_iterations, bool correct_check, bool gpu) {
     const int width  = 256;
     const int height = 256;
     const int channels = 3;
-    const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/sres_256/";
+    const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/sres_512/";
     const std::string net_dir  = BENCH_DUMP_DIR "/dumped_data/sres_network/";
 
     if (gpu)
@@ -487,11 +487,11 @@ void bench_sresDump256(int times, int heatup_iterations, bool correct_check, boo
  * Output size: 1024x1024
  * Free memory required: 6.5GB
  */
-void bench_sresDump512(int times, int heatup_iterations, bool correct_check, bool gpu) {
+void bench_sresDump1k(int times, int heatup_iterations, bool correct_check, bool gpu) {
     const int width  = 512;
     const int height = 512;
     const int channels = 3;
-    const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/sres_512/";
+    const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/sres_1k/";
     const std::string net_dir  = BENCH_DUMP_DIR "/dumped_data/sres_network/";
 
     if (gpu)

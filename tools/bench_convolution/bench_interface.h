@@ -10,8 +10,8 @@
 void bench_denoiseDump512(int times = 1, int heatup_iterations = 0, bool correct_check = false, bool gpu = false);
 void bench_denoiseDump1k(int times = 1, int heatup_iterations = 0, bool correct_check = false, bool gpu = false);
 
-void bench_sresDump256(int times = 1, int heatup_iterations = 0, bool correct_check = false, bool gpu = false);
 void bench_sresDump512(int times = 1, int heatup_iterations = 0, bool correct_check = false, bool gpu = false);
+void bench_sresDump1k(int times = 1, int heatup_iterations = 0, bool correct_check = false, bool gpu = false);
 
 void bench_sres_matmulDump(int times = 1, int heatup_iterations = 0, bool correct_check = false);
 
