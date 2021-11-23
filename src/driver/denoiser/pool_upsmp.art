@@ -102,7 +102,7 @@ fn @pool_gpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, 
 }
 
 /* Explicitly performs nearest-neighbor upsampling, saving the result at buf at position off. */
-fn @nearest(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
+fn @nearest_cpu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows * 2, img_mat.cols * 2);
 
     let img_acc = get_mat_acc(img_mat);

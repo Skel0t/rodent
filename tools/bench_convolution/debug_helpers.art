@@ -3,7 +3,7 @@ fn @get_debug_nn() -> NNInt {
         matmul     = matmul_cpu,
         im2col     = im2col_cpu,
         pool       = pool_cpu_on_gpu,
-        nearest    = nearest,
+        // nearest    = nearest_cpu,
         add_element_wise = add_element_wise_cpu,
         chw_to_hwc = chw_to_hwc_cpu
     }

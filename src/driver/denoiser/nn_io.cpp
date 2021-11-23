@@ -59,23 +59,6 @@ void read_in_biases(float* buffer, int offset, std::string path, int out_channel
     }
 }
 
-float* read_in_biases2(std::string path, int out_channels) {
-    std::fstream f;
-    f.open(path, std::ios::in);
-    if (!f) {
-        std::cout << "Couldn't open" << path << std::endl;
-        throw std::invalid_argument(path);
-    } else {
-        float* ptr = (float*) malloc(sizeof(float) * out_channels);
-
-        for (int i = 0; i < out_channels; i++) {
-            f >> ptr[i];
-        }
-        float x;
-        return ptr;
-    }
-}
-
 void read_in_matrix_chw(float* buffer, std::string path, int channels, int rows, int cols) {
     std::fstream f;
     f.open(path, std::ios::in);

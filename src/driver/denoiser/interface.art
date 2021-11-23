@@ -1,11 +1,8 @@
 #[import(cc = "C")] fn mkl_blas_mm_mult(_m: i32, _n: i32, _k: i32, _a: &[f32], _lda: i32, _b: &[f32], _ldb: i32, _c: &mut[f32], _ldc: i32) -> ();
-#[import(cc = "C")] fn mkl_add_constant(_n: i32, _a: &[f32], _val: f32, _res: &mut[f32]) -> ();
-#[import(cc = "C")] fn mkl_add_elemwise(_n: i32, _a: &[f32], _b: &[f32], _c: &mut[f32]) -> ();
-#[import(cc = "C")] fn mkl_apply_relu(_n: i32, _a: &[f32], _c: &mut[f32]) -> ();
 #[import(cc = "C")] fn cublas_gemm(_d_A: &[f32], _d_B: &[f32], _d_C: &[f32], _a_width: i32, _a_height: i32, _b_width: i32, _device: i32) -> ();
 
 /* Returns necessary memory for the denoising neural network, so that it can be
-   allocated in C++. Hard coded constants. */
+   allocated in C++. Hard coded constants integrated denoising network. */
 #[export]
 fn @get_necessary_mem(width: i32, height: i32) -> i64 {
     let size_im2col = (width as i64) * (height as i64) * (9 as i64) * (73 /* max(<in channels>/<shrinked_size>) */ as i64);  /* max size for im2col matrix */
