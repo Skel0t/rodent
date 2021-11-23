@@ -164,6 +164,36 @@ fn @matmul_oneapi(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
     c
 }
 
+fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
+    let acc = cuda_accelerator(0);
+
+    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+
+    let a_acc = get_mat_acc(a);
+    let b_acc = get_mat_acc(b);
+    let c_acc = get_mat_acc(c);
+
+    let threads_x = 32;
+    let threads_y = 32;
+    let block = (threads_x, threads_y, 1);    // 32 * 32 * 1 = 1024 Threads per block
+    let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), 1);
+
+    for work_item in acc.exec(grid, block) {
+        let row = work_item.bidy() * work_item.bdimy() + work_item.tidy();
+        let col = work_item.bidx() * work_item.bdimx() + work_item.tidx();
+
+        if row < c.rows && col < c.cols {
+            let mut v = biases(row);
+            for i in range(0, a.cols) {
+                v = v + a_acc.read(row, i, 0) * b_acc.read(i, col, 0);
+            }
+            c_acc.write(row, col, 0, act_fn(v));
+        }
+    }
+
+    c
+}
+
 /* a and b need to have same channel format. */
 fn @matmul_cublas(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
     let device = 0;
@@ -191,42 +221,6 @@ fn @matmul_cublas(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
         if row < c.rows && col < c.cols {
             // Valid thread, do same calculation as in cpu here
             c_acc.write(row, col, chn, act_fn(c_acc.read(row, col, chn) + biases(row)));  // 1 channel per row, thus access row-th bias
-        }
-    }
-
-    c
-}
-
-fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
-    let acc = cuda_accelerator(0);
-
-    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
-
-    let a_acc = get_mat_acc(a);
-    let b_acc = get_mat_acc(b);
-    let c_acc = get_mat_acc(c);
-
-    let threads_x = 32;
-    let threads_y = 32;
-    let block = (threads_x, threads_y, 1);    // 32 * 32 * 1 = 1024 Threads per block
-    let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), 1);
-
-    let tile_size = 8;  /* This tiling actually speeds up by ~16% */
-
-    for work_item in acc.exec(grid, block) {
-        let row = work_item.bidy() * work_item.bdimy() + work_item.tidy();
-        let col = work_item.bidx() * work_item.bdimx() + work_item.tidx();
-
-        if row < c.rows && col < c.cols {
-            let mut v = biases(row);
-            for ii in range_step(0, a.cols, tile_size) {
-                for i in range(ii, ii + tile_size) {
-                    if i < a.cols { // Always will be smaller than b.rows as well
-                        v = v + a_acc.read(row, i, 0) * b_acc.read(i, col, 0);
-                    }
-                }
-            }
-            c_acc.write(row, col, 0, act_fn(v));
         }
     }
 

@@ -20,7 +20,7 @@ fn @max_4(values: fn(i32) -> f32) -> f32 {
 
 /* Returns minimum of the two integer arguments. */
 fn @imin(a: i32, b: i32) -> i32 {
-    if a < b { a } else { b }
+    select(a < b, a, b)
 }
 
 /* Prints matrix in given format. */

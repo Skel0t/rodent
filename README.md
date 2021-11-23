@@ -2,9 +2,18 @@
 
 Rodent is a BVH traversal library and renderer implemented using the AnyDSL compiler framework (https://anydsl.github.io/).
 
+This fork integrates a denoising autoencoder into the renderer.
+
 # Building
 
-The dependencies are: CMake, AnyDSL, libpng, SDL2, and optionally the Embree sources for the benchmarking tools.
+The dependencies for Rodent are: CMake, AnyDSL, libpng, SDL2, and optionally the Embree sources for the benchmarking tools.
+
+Additional dependencies for the denoising are: intel oneAPI, CUDA, cuBLAS.
+The build will fail if either of these is not installed.
+However, the denoising can work independently without use of any of these libraries
+by native implementations in AnyDSL. In fact, our own CPU implementation is
+(by our own benchmarks) even faster than using oneAPI.
+
 Once the dependencies are installed, use the following commands to build the project:
 
     mkdir build
@@ -16,30 +25,37 @@ Once the dependencies are installed, use the following commands to build the pro
     # cmake .. -DEMBREE_ROOT_DIR=<path to Embree sources>
     make
 
+
 # Testing
 
 This section assumes that the current directory is the build directory. To run rodent, just type:
 
     bin/rodent
 
-You may want to change the initial camera parameters using the command line options `--eye`, `--dir` and `--up`. Run `bin/rodent --help` to get a full list of options.
+You may want to change the initial camera parameters using the command line options `--eye`, `--dir` and `--up`. Also, if denoising should be done at the end of the rendering
+process, add the `--denoise <output_path>` flag. Additionally, live denoising can
+be activated by executing rodent with the `--live` flag along with the `--denoise` flag.
 
-When ImageMagick is found by CMake, use the following commands to test the traversal code with the provided test scene:
+Run `bin/rodent --help` to get a full list of options.
 
-    make test
+Denoising in rodent can be executed with 4 different mappings that need to have different
+denoising platforms defined in `src/driver/driver.cpp`:
+ - CPU Mapping: `get_cpu_nn()` with `anydsl::Platform::Host`
+ - oneAPI Mapping: `get_oneapi_nn()` with `anydsl::Platform::Host`
+ - CUDA Mapping: `get_cuda_nn()` with `anydsl::Platform::Cuda`
+ - cuBLAS Mapping: `get_cublas_nn()` with `anydsl::Platform::Cuda`
 
-This will only test the primary ray distribution with the packet, single, and hybrid variants.
-To test all possible combinations, or if you do not have ImageMagick installed, use the benchmarking tool directly:
+For benchmarking the forward propagation implementation we provide four pre-written
+benchmarks. These can be found in `tools/bench_convolution/bench_convolution.cpp`.
+The provided benchmarks each propagate real dumped data through a sample neural
+network and time how long the execution takes.
 
-    bin/bench_traversal -bvh ../testing/sponza.bvh -ray ../testing/sponza-primary.rays --bench 50 --warmup 10 --tmax 5000 -o output-hybrid-primary.fbuf
-    bin/bench_traversal -bvh ../testing/sponza.bvh -ray ../testing/sponza-primary.rays --bench 50 --warmup 10 --tmax 5000 -s -o output-single-primary.fbuf
-    bin/bench_traversal -bvh ../testing/sponza.bvh -ray ../testing/sponza-random.rays --bench 50 --warmup 10 --tmax 1 -o output-hybrid-random.fbuf
-    bin/bench_traversal -bvh ../testing/sponza.bvh -ray ../testing/sponza-random.rays --bench 50 --warmup 10 --tmax 1 -s -o output-single-random.fbuf
-    bin/fbuf2png -n output-hybrid-primary.fbuf output-hybrid-primary.png
-    bin/fbuf2png -n output-single-primary.fbuf output-single-primary.png
-    bin/fbuf2png -n output-hybrid-random.fbuf output-hybrid-random.png
-    bin/fbuf2png -n output-single-random.fbuf output-single-random.png
+All benchmarks accept 4 arguments:
+ - Number of times to average over
+ - Number of warmup iterations before timing
+ - Boolean, whether the computed result should be compared to a precalculated reference
+ - Boolean, whether the execution should be done on the GPU
 
-This will run the traversal on the test set, and generate images as a result. For the primary ray distribution, the _hybrid_ and _single_ variants should generate the same images. The reference images for primary and random rays are in the `testing` directory.
-
-Running `bin/bench_traversal --help` will provide a list of additional options.
+Note that, when executing on the GPU, you also need to change the neural network
+method mapping in the corresponding `make_nn()` function to a GPU function mapping
+(`get_cuda_nn()` or `get_cublas_nn()`).

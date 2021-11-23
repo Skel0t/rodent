@@ -87,6 +87,7 @@ fn @iterate_matrix_chw_par(body: fn(AccM, f32, i32, i32, i32) -> ()) {
 	loop
 }
 
+/* Iterate from begin to end with stepsize step, but in parallel. */
 fn @parallel_step(body: fn(i32) -> ()) {
     fn @loop(beg: i32, end: i32, step: i32) -> () {
         let iterations = (end - beg) / step;

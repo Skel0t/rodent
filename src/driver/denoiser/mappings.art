@@ -2,7 +2,7 @@ struct NNInt {
     matmul : fn(Matrix, Matrix, fn(i32) -> f32, fn(f32) -> f32, Buffer, i64) -> Matrix,
     im2col : fn(i32, i32, i32, i32, i32, i32, AccM, i32, Buffer, i64) -> Matrix,
     pool   : fn(Matrix, i32, fn(fn(i32) -> f32) -> f32, Buffer, i64) -> Matrix,
-    nearest : fn(Matrix, Buffer, i64) -> Matrix, // UNUSED; USING ACCESSOR
+    // nearest : fn(Matrix, Buffer, i64) -> Matrix, // UNUSED; USING ACCESSOR
     add_element_wise : fn(Matrix, AccM, Buffer, i64) -> Matrix,
     chw_to_hwc : fn(Matrix, Buffer, i64) -> Matrix
 }
@@ -12,7 +12,7 @@ fn @get_cpu_nn() -> NNInt {
         matmul     = matmul_cpu,
         im2col     = im2col_cpu,
         pool       = pool_cpu,
-        nearest    = nearest,
+        // nearest    = nearest_cpu,
         add_element_wise = add_element_wise_cpu,
         chw_to_hwc = chw_to_hwc_cpu
     }
@@ -23,7 +23,7 @@ fn @get_oneapi_nn() -> NNInt {
         matmul     = matmul_oneapi,
         im2col     = im2col_cpu,
         pool       = pool_cpu,
-        nearest    = nearest,
+        // nearest    = nearest_cpu,
         add_element_wise = add_element_wise_cpu,
         chw_to_hwc = chw_to_hwc_cpu
     }
@@ -34,7 +34,7 @@ fn @get_cuda_nn() -> NNInt {
         matmul     = matmul_gpu,
         im2col     = im2col_gpu,
         pool       = pool_gpu,
-        nearest    = nearest,
+        // nearest    = NOT_IMPLEMENTED,
         add_element_wise = add_element_wise_gpu,
         chw_to_hwc = chw_to_hwc_gpu
     }
@@ -45,7 +45,7 @@ fn @get_cublas_nn() -> NNInt {
         matmul     = matmul_cublas,
         im2col     = im2col_gpu,
         pool       = pool_gpu,
-        nearest    = nearest,
+        // nearest    = NOT_IMPLEMENTED,
         add_element_wise = add_element_wise_gpu,
         chw_to_hwc = chw_to_hwc_gpu
     }
