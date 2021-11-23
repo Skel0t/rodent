@@ -159,15 +159,6 @@ fn @make_denoise_nn(kernels: Buffer, biases: Buffer, width: i32, height: i32) ->
     let necess_mem = 4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3);
 
     fn @forward_denoise(img: Buffer, albedo: Buffer, normal: Buffer, mem: Buffer, out_buf: Buffer) -> () {
-
-        if cpu_profiling_enabled {
-            total_counter   = 0;
-            im2col_counter  = 0;
-            matmul_counter  = 0;
-            pool_counter    = 0;
-            nearest_counter = 0;
-        }
-
         cpu_profile(&mut total_counter, || {
             let mut img_mat = make_matrix(img, 0, MemoryFormat::HWC, 3, height, width);
             let alb_mat  = make_matrix(albedo, 0, MemoryFormat::HWC, 3, height, width);
@@ -250,24 +241,6 @@ fn @make_denoise_nn(kernels: Buffer, biases: Buffer, width: i32, height: i32) ->
             // Write result in output buffer (necessary since rodent expects hwc while conv2d returns chw format)
             nn_int.chw_to_hwc(img_mat, out_buf, 0);
         });
-
-        if cpu_profiling_enabled {
-            fn @print_counter(counter: i64, name: &[u8]) -> () {
-                print_string(name);
-                print_string(": ");
-                print_i64(counter);
-                print_string(" (");
-                print_i64(counter * 100 / total_counter);
-                print_string("%)\n");
-            }
-            let other_counter = total_counter - im2col_counter - matmul_counter;
-            print_counter(im2col_counter, "im2col");
-            print_counter(matmul_counter, "matmul");
-            print_counter(pool_counter,   "pool");
-            print_counter(nearest_counter,"nearest");
-            print_counter(other_counter,  "other (than im2col and matmul)");
-            print_string("\n");
-        }
     }
 
     NNDEN { forward = forward_denoise, necess_mem = necess_mem }

@@ -17,7 +17,7 @@ fn @sres_dump(in_mat: &Buffer, flattened_kernels: &Buffer, biases: &[f32], out: 
         matmul_counter = 0;
     }
 
-    let nn_int = get_cpu_nn();
+    let nn_int = get_oneapi_nn();
 
     conv2d(nn_int, ksize, out_channels, kernel, biases_ho, id, mat, *out, 0, size_im2col);
 
@@ -68,4 +68,177 @@ fn @test(buf_ptr: &Buffer) -> () {
         bc_buf(0) = 4.51;
     }
     print_string("\n");
+}
+
+#[export]
+fn @reset_counters() -> () {
+    if cpu_profiling_enabled {
+        total_counter   = 0;
+        im2col_counter  = 0;
+        matmul_counter  = 0;
+        pool_counter    = 0;
+        nearest_counter = 0;
+    }
+}
+
+#[export]
+fn @print_counters() -> () {
+    if cpu_profiling_enabled {
+        fn @print_counter(counter: i64, name: &[u8]) -> () {
+            print_string(name);
+            print_string(": ");
+            print_i64(counter);
+            print_string(" (");
+            print_i64(counter * 100 / total_counter);
+            print_string("%)\n");
+        }
+        let other_counter = total_counter - im2col_counter - matmul_counter;
+        print_counter(im2col_counter, "im2col");
+        print_counter(matmul_counter, "matmul");
+        print_counter(pool_counter,   "pool");
+        print_counter(nearest_counter,"nearest");
+        print_counter(other_counter,  "other (than im2col and matmul)");
+        print_string("\n");
+    }
+}
+
+#[export]
+fn @matmul_cublas_test(a_buf: &Buffer, b_buf: &Buffer, c_buf: &Buffer) -> () {
+    let a_mat = make_matrix(*a_buf, 0, MemoryFormat::HWC, 1, 5, 3);
+    let b_mat = make_matrix(*b_buf, 0, MemoryFormat::HWC, 1, 3, 4);
+
+    matmul_cublas(a_mat, b_mat, @ |_| 0, id, *c_buf, 0);
+}
+
+#[export]
+fn @sres_forward(img_mat: &Buffer, out_buf: &Buffer, flattened_kernels: &Buffer,
+                 biases: &Buffer, width: i32, height: i32, memory: &Buffer) {
+    let nn = make_sres_nn_im2col(*flattened_kernels, *biases, width, height);
+    nn.forward(*img_mat, *memory, *out_buf);
+}
+
+#[export]
+fn @get_sres_mem(width: i32, height: i32) {
+    /* Hard coded constants */
+    let size_nearest = (width as i64) * (height as i64) * 3 as i64;
+    let size_im2col  = (5 as i64) * (5 as i64) * (64 as i64) * (2 * width as i64) * (2 * height as i64);  // size for im2col matrix
+    let size_img     = (2 * width as i64) * (2 * height as i64) * (64 as i64);                                       // size to save matmul output
+
+    4 * (size_nearest + size_im2col + size_img)
+}
+
+struct NNSres {
+    forward : fn(Buffer, Buffer, Buffer) -> (),
+    necess_mem : i64
+}
+
+fn @make_sres_nn_im2col(kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNSres {
+    /* Change configuration of what backend to use here */
+    let nn_int = get_cuda_nn();
+
+    // Create parameters for convolutions
+    let in_channels_1  = 3;
+    let out_channels_1 = 32;
+    let ksize_1 = 5;
+    let offset_1 = 0 as i64;
+
+    let in_channels_2  = out_channels_1;
+    let out_channels_2 = 64;
+    let ksize_2 = 3;
+    let offset_2 = offset_1 + (ksize_1 * ksize_1 * in_channels_1 * out_channels_1) as i64;
+
+    let in_channels_3  = out_channels_2;
+    let out_channels_3 = 64;
+    let ksize_3 = 3;
+    let offset_3 = offset_2 + (ksize_2 * ksize_2 * in_channels_2 * out_channels_2) as i64;
+
+    let in_channels_4  = out_channels_3;
+    let out_channels_4 = 32;
+    let ksize_4 = 5;
+    let offset_4 = offset_3 + (ksize_3 * ksize_3 * in_channels_3 * out_channels_3) as i64;
+
+    let in_channels_5  = out_channels_4;
+    let out_channels_5 = 32;
+    let ksize_5 = 3;
+    let offset_5 = offset_4 + (ksize_4 * ksize_4 * in_channels_4 * out_channels_4) as i64;
+
+    let in_channels_6  = out_channels_5;
+    let out_channels_6 = 32;
+    let ksize_6 = 3;
+    let offset_6 = offset_5 + (ksize_5 * ksize_5 * in_channels_5 * out_channels_5) as i64;
+
+    let in_channels_7  = out_channels_6;
+    let out_channels_7 = 3;
+    let ksize_7 = 3;
+    let offset_7 = offset_6 + (ksize_6 * ksize_6 * in_channels_6 * out_channels_6) as i64;
+
+    // Kernel matrices higher order functions
+    let flattened_kernels = @|i: i32| {
+        match i {
+            1 => make_matrix(kernels, offset_1, MemoryFormat::CHW, 1, out_channels_1, ksize_1 * ksize_1 * in_channels_1),
+            2 => make_matrix(kernels, offset_2, MemoryFormat::CHW, 1, out_channels_2, ksize_2 * ksize_2 * in_channels_2),
+            3 => make_matrix(kernels, offset_3, MemoryFormat::CHW, 1, out_channels_3, ksize_3 * ksize_3 * in_channels_3),
+            4 => make_matrix(kernels, offset_4, MemoryFormat::CHW, 1, out_channels_4, ksize_4 * ksize_4 * in_channels_4),
+            5 => make_matrix(kernels, offset_5, MemoryFormat::CHW, 1, out_channels_5, ksize_5 * ksize_5 * in_channels_5),
+            6 => make_matrix(kernels, offset_6, MemoryFormat::CHW, 1, out_channels_6, ksize_6 * ksize_6 * in_channels_6),
+            7 => make_matrix(kernels, offset_7, MemoryFormat::CHW, 1, out_channels_7, ksize_7 * ksize_7 * in_channels_7),
+            _ => make_matrix(kernels, offset_1, MemoryFormat::CHW, 1, out_channels_1, ksize_1 * ksize_1 * in_channels_1)
+        }
+    };
+
+    let bc_biases = bitcast[&[f32]](biases.data);
+
+    let biases = @|j: i32| {
+        match j {
+            1 => @|i: i32| { bc_biases(i) },
+            2 => @|i: i32| { bc_biases(i + out_channels_1) },
+            3 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2) },
+            4 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3) },
+            5 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4) },
+            6 => @|i: i32| { bc_biases(i + out_channels_1 + out_channels_2 + out_channels_3 + out_channels_4 + out_channels_5) },
+            _ => @|_i:i32| { 0 as f32 }
+        }
+    };
+
+    // Calculate necessary memory
+    let size_nearest = (width as i64) * (height as i64) * in_channels_1 as i64;
+    let size_im2col  = (ksize_4 as i64) * (ksize_4 as i64) * (in_channels_4 as i64) * (2 * width as i64) * (2 * height as i64);  // size for im2col matrix
+    let size_img     = (2 * width as i64) * (2 * height as i64) * (out_channels_3 as i64);                                       // size to save matmul output
+
+    let necess_mem   = 4 * (size_nearest + size_im2col + size_img);
+
+    fn @forward_sres(img: Buffer, mem: Buffer, out: Buffer) -> () {
+        cpu_profile(&mut total_counter, || {
+            let mut img_mat = make_matrix(img, 0, MemoryFormat::CHW, 3, height, width);
+
+            let nearest_mat_acc = nearest_acc(img_mat);
+
+            // Convolution 1
+            img_mat = conv2d(nn_int, ksize_1, out_channels_1, flattened_kernels(1), biases(1), leaky_relu_x, img_mat, mem, size_nearest, size_nearest + size_im2col);
+
+            // Convolution 2
+            img_mat = conv2d(nn_int, ksize_2, out_channels_2, flattened_kernels(2), biases(2), leaky_relu_x, img_mat, mem, size_nearest, size_nearest + size_im2col);
+
+            // Convolution 3
+            img_mat = conv2d(nn_int, ksize_3, out_channels_3, flattened_kernels(3), biases(3), leaky_relu_x, img_mat, mem, size_nearest, size_nearest + size_im2col);
+            let img_mat_acc = nearest_acc(img_mat);
+
+            // Upconvolution 1 (Conv 4)
+            img_mat = cat_conv2d(nn_int, ksize_4, out_channels_4, in_channels_4, flattened_kernels(4), biases(4), leaky_relu_x, 2 * img_mat.rows, 2 * img_mat.cols, img_mat_acc, mem, size_nearest, size_nearest + size_im2col);
+
+            // Convolution 5
+            img_mat = conv2d(nn_int, ksize_5, out_channels_5, flattened_kernels(5), biases(5), leaky_relu_x, img_mat, mem, size_nearest, size_nearest + size_im2col);
+
+            // Convolution 6
+            img_mat = conv2d(nn_int, ksize_6, out_channels_6, flattened_kernels(6), biases(6), leaky_relu_x, img_mat, mem, size_nearest, size_nearest + size_im2col);
+
+            // Convolution 7
+            img_mat = conv2d(nn_int, ksize_7, out_channels_7, flattened_kernels(7), biases(7), id, img_mat, mem, size_nearest, size_nearest + size_im2col);
+
+            // Add residual image to upscaled one
+            img_mat = nn_int.add_element_wise(img_mat, nearest_mat_acc, out, 0);
+        });
+    }
+
+    NNSres { forward = forward_sres, necess_mem = necess_mem }
 }

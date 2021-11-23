@@ -190,7 +190,7 @@ fn @matmul_cublas(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
 
         if row < c.rows && col < c.cols {
             // Valid thread, do same calculation as in cpu here
-            c_acc.write(row, col, chn, act_fn(c_acc.read(row, col, chn) + biases(row)));  // 1 channel per row, thus access  row-th bias
+            c_acc.write(row, col, chn, act_fn(c_acc.read(row, col, chn) + biases(row)));  // 1 channel per row, thus access row-th bias
         }
     }
 
@@ -211,14 +211,20 @@ fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
     let block = (threads_x, threads_y, 1);    // 32 * 32 * 1 = 1024 Threads per block
     let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), 1);
 
+    let tile_size = 8;  /* This tiling actually speeds up by ~16% */
+
     for work_item in acc.exec(grid, block) {
         let row = work_item.bidy() * work_item.bdimy() + work_item.tidy();
         let col = work_item.bidx() * work_item.bdimx() + work_item.tidx();
 
         if row < c.rows && col < c.cols {
             let mut v = biases(row);
-            for i in range(0, a.cols) {
-                v = v + a_acc.read(row, i, 0) * b_acc.read(i, col, 0);
+            for ii in range_step(0, a.cols, tile_size) {
+                for i in range(ii, ii + tile_size) {
+                    if i < a.cols { // Always will be smaller than b.rows as well
+                        v = v + a_acc.read(row, i, 0) * b_acc.read(i, col, 0);
+                    }
+                }
             }
             c_acc.write(row, col, 0, act_fn(v));
         }
@@ -228,17 +234,43 @@ fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
 }
 
 /* Matrices a and b need to have the same dimensions. */
-fn @add_element_wise_cpu(a: Matrix, b: Matrix, buf: Buffer, off: i64) -> Matrix {
+fn @add_element_wise_cpu(a: Matrix, b_acc: AccM, buf: Buffer, off: i64) -> Matrix {
     let res = make_matrix(buf, off, a.format, a.channels, a.rows, a.cols);
 
     let res_acc  = get_mat_acc(res);
-    let b_acc = get_mat_acc(b);
 
     for _acc, v, r, c, chn in iterate_matrix_par(a) {
         res_acc.write(r, c, chn, b_acc.read(r, c, chn) + v);
     }
 
     res
+}
+
+/* Matrices a and b need to have the same dimensions. */
+fn @add_element_wise_gpu(a: Matrix, b_acc: AccM, buf: Buffer, off: i64) -> Matrix {
+    let acc = cuda_accelerator(0);
+
+    let res_mat = make_matrix(buf, off, a.format, a.channels, a.rows, a.cols);
+
+    let res_acc = get_mat_acc(res_mat);
+    let a_acc   = get_mat_acc(a);
+
+    let threads_x = 32;
+    let threads_y = 32;
+    let block = (threads_x, threads_y, 1);
+    let grid  = (round_up(res_mat.cols, threads_x), round_up(res_mat.rows, threads_y), res_mat.channels);
+
+    for work_item in acc.exec(grid, block) {
+        let col = work_item.bdimx() * work_item.bidx() + work_item.tidx();
+        let row = work_item.bdimy() * work_item.bidy() + work_item.tidy();
+        let chn = work_item.bidz();     // Will never overshoot, always valid
+
+        if row < res_mat.rows && col < res_mat.cols {
+            res_acc.write(row, col, chn, b_acc.read(row, col, chn) + a_acc.read(row, col, chn));
+        }
+    }
+
+    res_mat
 }
 
 /* Copies the given matrix to the given buffer and offset in HWC format. */

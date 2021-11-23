@@ -4,6 +4,7 @@ fn @get_debug_nn() -> NNInt {
         im2col     = im2col_cpu,
         pool       = pool_cpu_on_gpu,
         nearest    = nearest,
+        add_element_wise = add_element_wise_cpu,
         chw_to_hwc = chw_to_hwc_cpu
     }
 }
