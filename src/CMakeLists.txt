@@ -104,6 +104,23 @@ find_package(LZ4 REQUIRED)
 find_package(LAPACK REQUIRED)
 find_package(CUDA REQUIRED)
 
+# To find cublaslt, cmake doesn't find it as easily as cublas
+find_library(
+    _CUBLASLT_LIBRARY
+    NAMES cublasLt
+    HINTS
+      ${CUBLAS_LIBRARY_PATH}
+      ENV CUBLAS_LIBRARY_PATH
+      ${_CUBLAS_INCLUDE_DIR}/..
+      ${CUBLAS_PATH}
+      ENV CUBLAS_PATH
+      ${CUDA_TOOLKIT_ROOT_DIR}
+    PATH_SUFFIXES
+      lib64
+      lib/x64
+      lib
+    )
+
 add_executable(converter ${CONVERTER_SRCS})
 add_dependencies(converter rodent_c_interface)
 target_include_directories(converter PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${LZ4_INCLUDE_DIR})
@@ -147,7 +164,7 @@ endif()
 
 add_executable(rodent ${RODENT_OBJS})
 
-target_link_libraries(rodent driver ${AnyDSL_runtime_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${TBB_LIBRARIES} ${LZ4_LIBRARY} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY})
+target_link_libraries(rodent driver ${AnyDSL_runtime_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${TBB_LIBRARIES} ${LZ4_LIBRARY} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY} ${_CUBLASLT_LIBRARY})
 
 if (SCENE_FILE STREQUAL "${PROJECT_SOURCE_DIR}/testing/cornell_box.obj")
     # Test rodent when the cornell box is used

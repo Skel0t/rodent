@@ -237,8 +237,8 @@ static inline void usage() {
 int main(int argc, char** argv) {
     std::string out_file;
     size_t bench_iter = 0;
-    size_t width  = 1080;
-    size_t height = 720;
+    size_t width  = 1024;
+    size_t height = 1024;
     float fov = 60.0f;
     float3 eye(0.0f), dir(0.0f, 0.0f, 1.0f), up(0.0f, 1.0f, 0.0f);
     std::string dns = "";
@@ -294,6 +294,12 @@ int main(int argc, char** argv) {
         }
         error("Unexpected argument '", argv[i], "'");
     }
+    if (dns != "") {
+        // Make sure dimensions are divisible by 16 = 2^4 as we pool 4 times
+        width = round_up(width, 16);
+        height = round_up(height, 16);
+    }
+
     Camera cam(eye, dir, up, fov, (float)width / (float)height);
 
 #ifdef DISABLE_GUI
