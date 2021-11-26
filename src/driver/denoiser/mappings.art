@@ -50,3 +50,14 @@ fn @get_cublas_nn() -> NNInt {
         chw_to_hwc = chw_to_hwc_gpu
     }
 }
+
+fn @get_cublaslt_nn() -> NNInt {
+    NNInt {
+        matmul     = matmul_cublaslt,
+        im2col     = im2col_gpu,
+        pool       = pool_gpu,
+        // nearest    = NOT_IMPLEMENTED,
+        add_element_wise = add_element_wise_gpu,
+        chw_to_hwc = chw_to_hwc_gpu
+    }
+}

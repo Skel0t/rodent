@@ -11,7 +11,7 @@ struct NNDEN {
    the number of feature maps were made. */
 fn @make_denoise_nn(kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNDEN {
     /* Change configuration of what backend to use here */
-    let nn_int = get_cuda_nn();
+    let nn_int = get_cublas_nn();
 
     /* Kernel size and poolsize is the same for every convolution / pooling layer */
     let ksize    = 3;

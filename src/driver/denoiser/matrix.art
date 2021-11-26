@@ -194,7 +194,7 @@ fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
     c
 }
 
-/* a and b need to have same channel format. */
+// Two cublas implementations to check if there is a difference.
 fn @matmul_cublas(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
     let device = 0;
     let acc = cuda_accelerator(device);
@@ -207,7 +207,45 @@ fn @matmul_cublas(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
     let block = (threads_x, threads_y, 1);
     let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), c.channels);
 
-    cublas_gemm(
+    // cublas kernels do not wait for kernels computing a and b to finish
+    acc.sync();
+
+    cublas_S_gemm(
+        /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))),
+        /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))),
+        /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))),
+        /*lda*/ a.cols, /*ldb*/ a.rows, /*ldc*/ b.cols, device);
+
+    for work_item in acc.exec(grid, block) {
+        let col = work_item.bdimx() * work_item.bidx() + work_item.tidx();
+        let row = work_item.bdimy() * work_item.bidy() + work_item.tidy();
+        let chn = work_item.bidz();     // Will never overshoot, always valid
+
+        if row < c.rows && col < c.cols {
+            // Valid thread, do same calculation as in cpu here
+            c_acc.write(row, col, chn, act_fn(c_acc.read(row, col, chn) + biases(row)));  // 1 channel per row, thus access row-th bias
+        }
+    }
+
+    c
+}
+
+fn @matmul_cublaslt(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
+    let device = 0;
+    let acc = cuda_accelerator(device);
+
+    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let c_acc = get_mat_acc(c);
+
+    let threads_x = 32;
+    let threads_y = 32;
+    let block = (threads_x, threads_y, 1);
+    let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), c.channels);
+
+    // cublas kernels do not wait for kernels computing a and b to finish
+    acc.sync();
+
+    cublaslt_S_gemm(
         /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))),
         /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))),
         /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))),

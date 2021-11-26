@@ -41,7 +41,24 @@ set(BLA_VENDOR Intel10_64lp)
 find_package(LAPACK REQUIRED)   # oneAPI/MKL
 find_package(CUDA REQUIRED)     # CUBLAS
 
+# To find cublaslt, cmake doesn't find it as easily as cublas
+find_library(
+    _CUBLASLT_LIBRARY
+    NAMES cublasLt
+    HINTS
+      ${CUBLAS_LIBRARY_PATH}
+      ENV CUBLAS_LIBRARY_PATH
+      ${_CUBLAS_INCLUDE_DIR}/..
+      ${CUBLAS_PATH}
+      ENV CUBLAS_PATH
+      ${CUDA_TOOLKIT_ROOT_DIR}
+    PATH_SUFFIXES
+      lib64
+      lib/x64
+      lib
+    )
+
 add_executable(bench_convolution ${INTERFACE_OBJS} ${NN_OBJS} ${NN_CPP_SRCS} ${CMAKE_CURRENT_BINARY_DIR}/interface.h)
 target_include_directories(bench_convolution PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CUDA_INCLUDE_DIRS})
-target_link_libraries(bench_convolution ${AnyDSL_runtime_LIBRARIES} ${LAPACK_LIBRARIES} ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY})
+target_link_libraries(bench_convolution ${AnyDSL_runtime_LIBRARIES} ${LAPACK_LIBRARIES} ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY} ${_CUBLASLT_LIBRARY})
 target_compile_definitions(bench_convolution PUBLIC BENCH_DUMP_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
