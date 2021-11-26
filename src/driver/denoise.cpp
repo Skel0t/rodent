@@ -83,7 +83,7 @@ void read_in(anydsl::Array<float>* weights, anydsl::Array<float>* biases, std::s
     read_in_biases(biases->data(), 12 + 12 + 16 + 32 + 64 + 70 + 70 + 92 + 92 + 70 + 70 + 64 + 64 + 32 + 16, network_path + "/bias16.txt",  3);
 }
 
-void denoise(anydsl::Array<float>* color, anydsl::Array<float>* albedo, anydsl::Array<float>* normal,
+void denoise(std::string denoising_backend, anydsl::Array<float>* color, anydsl::Array<float>* albedo, anydsl::Array<float>* normal,
              anydsl::Array<uint8_t>* memory, anydsl::Array<float>* out, int width, int height,
              anydsl::Array<float>* weights, anydsl::Array<float>* biases) {
     Buffer color_buf   = { (char*) color->data(),   color->size()  * (long) sizeof(float),   color->device()   };
@@ -94,5 +94,15 @@ void denoise(anydsl::Array<float>* color, anydsl::Array<float>* albedo, anydsl::
     Buffer weights_buf = { (char*) weights->data(), weights->size()* (long) sizeof(float),   weights->device() };
     Buffer biases_buf  = { (char*) biases->data(),  biases->size() * (long) sizeof(float),   biases->device()  };
 
-    forward_denoise(&color_buf, &albedo_buf, &normal_buf, &memory_buf, width, height, &out_buf, &weights_buf, &biases_buf);
+    if (denoising_backend == "cuda")
+        forward_denoise_cuda(&color_buf, &albedo_buf, &normal_buf, &memory_buf, width, height, &out_buf, &weights_buf, &biases_buf);
+    else if (denoising_backend == "cublas")
+        forward_denoise_cublas(&color_buf, &albedo_buf, &normal_buf, &memory_buf, width, height, &out_buf, &weights_buf, &biases_buf);
+    else if (denoising_backend == "cublaslt")
+        forward_denoise_cublaslt(&color_buf, &albedo_buf, &normal_buf, &memory_buf, width, height, &out_buf, &weights_buf, &biases_buf);
+    else if (denoising_backend == "cpu")
+        forward_denoise_cpu(&color_buf, &albedo_buf, &normal_buf, &memory_buf, width, height, &out_buf, &weights_buf, &biases_buf);
+    else if (denoising_backend == "oneapi")
+        forward_denoise_oneapi(&color_buf, &albedo_buf, &normal_buf, &memory_buf, width, height, &out_buf, &weights_buf, &biases_buf);
+
 }

@@ -25,7 +25,7 @@ fn @im2col_cpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_he
                         let h = p_row + y;
                         let w = p_col + x;
 
-                        if h < 0 || w < 0 || h >= in_height || w >= in_width {
+                        if unlikely(h < 0 || w < 0 || h >= in_height || w >= in_width) {
                             bc(off + base_row + (base_col as i64)) = 0; /* zero-padding */
                         } else {
                             bc(off + base_row + (base_col as i64)) = img_acc.read(h, w, chn);
