@@ -231,11 +231,13 @@ static inline void usage() {
               << "   --denoise denoise.png Enables denoising with neural network\n"
               << "   --live                Enables live denoising if denoise flag is set\n"
               << "   --aux                 Saves rendered normal and albedo image\n"
+              << "   --dback   backend     Sets denoising backend (cpu, oneapi, cuda, cublas, cublaslt)\n"
               << "   -o        image.png   Writes the output image to a file" << std::endl;
 }
 
 int main(int argc, char** argv) {
     std::string out_file;
+    std::string denoising_backend = "cpu";
     size_t bench_iter = 0;
     size_t width  = 1024;
     size_t height = 1024;
@@ -287,6 +289,9 @@ int main(int argc, char** argv) {
                 live = true;
             } else if (!strcmp(argv[i], "--aux")) {
                 aux = true;
+            } else if (!strcmp(argv[i], "--dback")) {
+                check_arg(argc, argv, i, 1);
+                denoising_backend = argv[++i];
             } else {
                 error("Unknown option '", argv[i], "'");
             }
@@ -340,7 +345,12 @@ int main(int argc, char** argv) {
     _mm_setcsr(_mm_getcsr() | (_MM_FLUSH_ZERO_ON | _MM_DENORMALS_ZERO_ON));
 #endif
 
-    const anydsl::Platform denoising_platform = anydsl::Platform::Cuda;
+    anydsl::Platform denoising_platform;
+    if (denoising_backend == "cuda" || denoising_backend == "cublaslt" || denoising_backend == "cublas")
+        denoising_platform = anydsl::Platform::Cuda;
+    else
+        denoising_platform = anydsl::Platform::Host;
+
     const anydsl::Device denoising_device = anydsl::Device(0);
     const int32_t dev_plat_mask = anydsl::make_device(denoising_platform, denoising_device);
 
@@ -422,7 +432,7 @@ int main(int argc, char** argv) {
                 gamma_correct_gpu(width, height, iter, nrm.data(), false);
             }
 
-            denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases);
+            denoise(denoising_backend, &pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases);
 
             if (dev_plat_mask == 0) {
                 clamp_image(width, height, outputPtr.data());
@@ -497,7 +507,7 @@ int main(int argc, char** argv) {
             anydsl_copy(0, get_alb_pixels(), 0, dev_plat_mask, alb.data(), 0, img_s * sizeof(float));
             anydsl_copy(0, get_nrm_pixels(), 0, dev_plat_mask, nrm.data(), 0, img_s * sizeof(float));
 
-            denoise(&pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases);
+            denoise(denoising_backend, &pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases);
 
             if (dev_plat_mask == 0) {
                 clamp_image(width, height, outputPtr.data());

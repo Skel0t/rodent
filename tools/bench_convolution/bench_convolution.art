@@ -110,10 +110,44 @@ fn @matmul_cublas_test(a_buf: &Buffer, b_buf: &Buffer, c_buf: &Buffer) -> () {
     matmul_cublas(a_mat, b_mat, @ |_| 0, id, *c_buf, 0);
 }
 
+// TODO: Split into 5 functions
 #[export]
-fn @sres_forward(img_mat: &Buffer, out_buf: &Buffer, flattened_kernels: &Buffer,
+fn @sres_forward_cpu(img_mat: &Buffer, out_buf: &Buffer, flattened_kernels: &Buffer,
                  biases: &Buffer, width: i32, height: i32, memory: &Buffer) {
-    let nn = make_sres_nn_im2col(*flattened_kernels, *biases, width, height);
+    let nn_int = get_cpu_nn();
+    let nn = make_sres_nn_im2col(nn_int, *flattened_kernels, *biases, width, height);
+    nn.forward(*img_mat, *memory, *out_buf);
+}
+
+#[export]
+fn @sres_forward_oneapi(img_mat: &Buffer, out_buf: &Buffer, flattened_kernels: &Buffer,
+                 biases: &Buffer, width: i32, height: i32, memory: &Buffer) {
+    let nn_int = get_oneapi_nn();
+    let nn = make_sres_nn_im2col(nn_int, *flattened_kernels, *biases, width, height);
+    nn.forward(*img_mat, *memory, *out_buf);
+}
+
+#[export]
+fn @sres_forward_cuda(img_mat: &Buffer, out_buf: &Buffer, flattened_kernels: &Buffer,
+                 biases: &Buffer, width: i32, height: i32, memory: &Buffer) {
+    let nn_int = get_cuda_nn();
+    let nn = make_sres_nn_im2col(nn_int, *flattened_kernels, *biases, width, height);
+    nn.forward(*img_mat, *memory, *out_buf);
+}
+
+#[export]
+fn @sres_forward_cublas(img_mat: &Buffer, out_buf: &Buffer, flattened_kernels: &Buffer,
+                 biases: &Buffer, width: i32, height: i32, memory: &Buffer) {
+    let nn_int = get_cublas_nn();
+    let nn = make_sres_nn_im2col(nn_int, *flattened_kernels, *biases, width, height);
+    nn.forward(*img_mat, *memory, *out_buf);
+}
+
+#[export]
+fn @sres_forward_cublaslt(img_mat: &Buffer, out_buf: &Buffer, flattened_kernels: &Buffer,
+                 biases: &Buffer, width: i32, height: i32, memory: &Buffer) {
+    let nn_int = get_cublaslt_nn();
+    let nn = make_sres_nn_im2col(nn_int, *flattened_kernels, *biases, width, height);
     nn.forward(*img_mat, *memory, *out_buf);
 }
 
@@ -132,10 +166,7 @@ struct NNSres {
     necess_mem : i64
 }
 
-fn @make_sres_nn_im2col(kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNSres {
-    /* Change configuration of what backend to use here */
-    let nn_int = get_cuda_nn();
-
+fn @make_sres_nn_im2col(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNSres {
     // Create parameters for convolutions
     let in_channels_1  = 3;
     let out_channels_1 = 32;

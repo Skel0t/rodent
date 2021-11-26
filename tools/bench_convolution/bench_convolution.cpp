@@ -1,5 +1,6 @@
 #include <iostream>
 #include <chrono>
+#include <cstring>
 
 #include <anydsl_runtime.hpp>
 
@@ -7,30 +8,57 @@
 #include "../../src/driver/denoiser/nn_io.h"
 #include "../../src/driver/denoise.h"
 
-int main() {
-    /* Remember to change the nn_int mappings in the artic files as well, when
-       when changing gpu/cpu. */
+static inline void check_arg(int argc, char** argv, int arg, int n) {
+    if (arg + n >= argc)
+        error("Option '", argv[arg], "' expects ", n, " arguments, got ", argc - arg);
+}
 
-    /* CPU BENCHMARKING */
-    // bench_sresDump512(100, 10, false, false);
-    // bench_sresDump1k(100, 10, false, false);
+int main(int argc, char** argv) {
+    std::string backend = "cpu";
+    std::string bench   = "denoise512";
+    size_t iterations   = 1;
+    size_t warmup       = 0;
+    bool correct_check  = false;
 
-    // bench_denoiseDump512(100, 10, false, false);
-    // bench_denoiseDump1k(100, 10, false, false);
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i][0] == '-') {
+            if (!strcmp(argv[i], "--backend")) {
+                check_arg(argc, argv, i, 1);
+                backend = argv[++i];
+            } else if (!strcmp(argv[i], "--bench")) {
+                check_arg(argc, argv, i, 1);
+                bench = argv[++i];
+            } else if (!strcmp(argv[i], "--iterations")) {
+                check_arg(argc, argv, i, 1);
+                iterations = strtoul(argv[++i], nullptr, 10);
+            } else if (!strcmp(argv[i], "--warmup")) {
+                check_arg(argc, argv, i, 1);
+                warmup = strtoul(argv[++i], nullptr, 10);
+            } else if (!strcmp(argv[i], "--check")) {
+                correct_check = true;
+            } else {
+                error("Unknown option '", argv[i], "'");
+            }
+            continue;
+        }
+        error("Unexpected argument '", argv[i], "'");
+    }
 
-    /* GPU BENCHMARKING */
-    // bench_sresDump512(1000, 100, false, true);
-    // bench_sresDump1k(600, 100, false, true);
-
-    // bench_denoiseDump512(1000, 100, false, true);
-    // bench_denoiseDump1k(1000, 100, false, true);
+    if (bench == "denoise512")
+        bench_denoiseDump512(iterations, warmup, backend, correct_check);
+    else if (bench == "denoise1k" || bench == "denoise1024")
+        bench_denoiseDump1k(iterations, warmup, backend, correct_check);
+    else if (bench == "sres512")
+        bench_sresDump512(iterations, warmup, backend, correct_check);
+    else if (bench == "sres1k" || bench == "sres1024")
+        bench_sresDump1k(iterations, warmup, backend, correct_check);
 
     return 0;
 }
 
 /******** DENOISING ********/
 
-void bench_denoiseDump_cpu(int width, int height, int channels, std::string dump_dir, int times, int heat_up_iterations, bool correct_check) {
+void bench_denoiseDump_cpu(std::string backend, int width, int height, int channels, std::string dump_dir, int times, int heat_up_iterations, bool correct_check) {
     // Buffer for weights and biases
     anydsl::Array<float> weights;
     anydsl::Array<float> biases;
@@ -55,14 +83,14 @@ void bench_denoiseDump_cpu(int width, int height, int channels, std::string dump
 
     // Heat-Up iterations
     for (int i = 0; i < heat_up_iterations; i++) {
-        denoise(&img_mat, &alb_mat, &nrm_mat, &nn_memory, &out_mat, width, height, &weights, &biases);
+        denoise(backend, &img_mat, &alb_mat, &nrm_mat, &nn_memory, &out_mat, width, height, &weights, &biases);
     }
 
     reset_counters();
 
     // Time execution
     auto ticks = std::chrono::high_resolution_clock::now();
-    denoise(&img_mat, &alb_mat, &nrm_mat, &nn_memory, &out_mat, width, height, &weights, &biases);
+    denoise(backend, &img_mat, &alb_mat, &nrm_mat, &nn_memory, &out_mat, width, height, &weights, &biases);
     auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
 
     // Check if result is correct (only for the first time)
@@ -84,7 +112,7 @@ void bench_denoiseDump_cpu(int width, int height, int channels, std::string dump
 
     for (int i = 1; i < times; i++) {
         ticks = std::chrono::high_resolution_clock::now();
-        denoise(&img_mat, &alb_mat, &nrm_mat, &nn_memory, &out_mat, width, height, &weights, &biases);
+        denoise(backend, &img_mat, &alb_mat, &nrm_mat, &nn_memory, &out_mat, width, height, &weights, &biases);
         elapsed_ms += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
     }
 outer_break:
@@ -101,7 +129,7 @@ outer_break:
     biases.release();
 }
 
-void bench_denoiseDump_gpu(int width, int height, int channels, std::string dump_dir, int times, int heat_up_iterations, bool correct_check) {
+void bench_denoiseDump_gpu(std::string backend, int width, int height, int channels, std::string dump_dir, int times, int heat_up_iterations, bool correct_check) {
     // Buffer for weights and biases
     anydsl::Array<float> weights;
     anydsl::Array<float> biases;
@@ -154,14 +182,14 @@ void bench_denoiseDump_gpu(int width, int height, int channels, std::string dump
 
     // Heat-Up iterations
     for (int i = 0; i < heat_up_iterations; i++) {
-        denoise(&img_mat_gpu, &alb_mat_gpu, &nrm_mat_gpu, &nn_memory, &out_mat_gpu, width, height, &weights_gpu, &biases_gpu);
+        denoise(backend, &img_mat_gpu, &alb_mat_gpu, &nrm_mat_gpu, &nn_memory, &out_mat_gpu, width, height, &weights_gpu, &biases_gpu);
     }
 
     reset_counters();
 
     // Time execution
     auto ticks = std::chrono::high_resolution_clock::now();
-    denoise(&img_mat_gpu, &alb_mat_gpu, &nrm_mat_gpu, &nn_memory, &out_mat_gpu, width, height, &weights_gpu, &biases_gpu);
+    denoise(backend, &img_mat_gpu, &alb_mat_gpu, &nrm_mat_gpu, &nn_memory, &out_mat_gpu, width, height, &weights_gpu, &biases_gpu);
     auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
 
     // Check if result is correct (only for the first time)
@@ -193,7 +221,7 @@ void bench_denoiseDump_gpu(int width, int height, int channels, std::string dump
 
     for (int i = 1; i < times; i++) {
         ticks = std::chrono::high_resolution_clock::now();
-        denoise(&img_mat_gpu, &alb_mat_gpu, &nrm_mat_gpu, &nn_memory, &out_mat_gpu, width, height, &weights_gpu, &biases_gpu);
+        denoise(backend, &img_mat_gpu, &alb_mat_gpu, &nrm_mat_gpu, &nn_memory, &out_mat_gpu, width, height, &weights_gpu, &biases_gpu);
         elapsed_ms += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
     }
 outer_break:
@@ -203,13 +231,13 @@ outer_break:
     out_mat.release();
     ref_mat.release();
 
+    nn_memory.release();
     img_mat_gpu.release();
     alb_mat_gpu.release();
     nrm_mat_gpu.release();
     out_mat_gpu.release();
     weights_gpu.release();
     biases_gpu.release();
-    nn_memory.release();
 }
 
 /**
@@ -218,17 +246,17 @@ outer_break:
  * Input size: 512x512
  * Free memory required: 0.7GB
  */
-void bench_denoiseDump512(int times, int heatup_iterations, bool correct_check, bool gpu) {
+void bench_denoiseDump512(int times, int heatup_iterations, std::string backend, bool correct_check) {
     // Constant values used in the dumped data
     const int width  = 512;
     const int height = 512;
     const int channels = 3;
     const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/denoising_512x512/";
 
-    if (gpu)
-        bench_denoiseDump_gpu(width, height, channels, dump_dir, times, heatup_iterations, correct_check);
+    if (backend == "cuda" || backend == "cublas" || backend == "cublaslt")
+        bench_denoiseDump_gpu(backend, width, height, channels, dump_dir, times, heatup_iterations, correct_check);
     else
-        bench_denoiseDump_cpu(width, height, channels, dump_dir, times, heatup_iterations, correct_check);
+        bench_denoiseDump_cpu(backend, width, height, channels, dump_dir, times, heatup_iterations, correct_check);
 }
 
 /**
@@ -237,17 +265,17 @@ void bench_denoiseDump512(int times, int heatup_iterations, bool correct_check, 
  * Input size: 1024x1024
  * Free memory required: 2.7GB
  */
-void bench_denoiseDump1k(int times, int heatup_iterations, bool correct_check, bool gpu) {
+void bench_denoiseDump1k(int times, int heatup_iterations, std::string backend, bool correct_check) {
     // Constant values used in the dumped data
     const int width  = 1024;
     const int height = 1024;
     const int channels = 3;
     const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/denoising_1kx1k/";
 
-    if (gpu)
-        bench_denoiseDump_gpu(width, height, channels, dump_dir, times, heatup_iterations, correct_check);
+    if (backend == "cuda" || backend == "cublas" || backend == "cublaslt")
+        bench_denoiseDump_gpu(backend, width, height, channels, dump_dir, times, heatup_iterations, correct_check);
     else
-        bench_denoiseDump_cpu(width, height, channels, dump_dir, times, heatup_iterations, correct_check);
+        bench_denoiseDump_cpu(backend, width, height, channels, dump_dir, times, heatup_iterations, correct_check);
 }
 
 /******** SRES ********/
@@ -294,7 +322,7 @@ void read_in_sres(anydsl::Array<float>* weights, anydsl::Array<float>* biases, s
     read_in_biases(b, 32 + 64 + 64 + 32 + 32, network_path + "/c5bias.txt",  32);
 }
 
-void sres_forward_wrap(anydsl::Array<float>* img_mat, anydsl::Array<float>* out_mat, anydsl::Array<float>* weights,
+void sres_forward_wrap(std::string denoising_backend, anydsl::Array<float>* img_mat, anydsl::Array<float>* out_mat, anydsl::Array<float>* weights,
                  anydsl::Array<float>* biases, int32_t width, int32_t height, anydsl::Array<uint8_t>* memory) {
     Buffer img_mat_buf = { (char*) img_mat->data(),  img_mat->size(),  img_mat->device()  };
     Buffer weights_buf = { (char*) weights->data(),  weights->size(),  weights->device()  };
@@ -302,10 +330,19 @@ void sres_forward_wrap(anydsl::Array<float>* img_mat, anydsl::Array<float>* out_
     Buffer out_mat_buf = { (char*) out_mat->data(),  out_mat->size(),  out_mat->device()  };
     Buffer memory_buf  = { (char*) memory->data(),   memory->size(),   memory->device()   };
 
-    sres_forward(&img_mat_buf, &out_mat_buf, &weights_buf, &biases_buf, width, height, &memory_buf);
+    if (denoising_backend == "cuda")
+        sres_forward_cuda(&img_mat_buf, &out_mat_buf, &weights_buf, &biases_buf, width, height, &memory_buf);
+    else if (denoising_backend == "cublas")
+        sres_forward_cublas(&img_mat_buf, &out_mat_buf, &weights_buf, &biases_buf, width, height, &memory_buf);
+    else if (denoising_backend == "cublaslt")
+        sres_forward_cublaslt(&img_mat_buf, &out_mat_buf, &weights_buf, &biases_buf, width, height, &memory_buf);
+    else if (denoising_backend == "cpu")
+        sres_forward_cpu(&img_mat_buf, &out_mat_buf, &weights_buf, &biases_buf, width, height, &memory_buf);
+    else if (denoising_backend == "oneapi")
+        sres_forward_oneapi(&img_mat_buf, &out_mat_buf, &weights_buf, &biases_buf, width, height, &memory_buf);
 }
 
-void bench_sresDump_cpu(int width, int height, int channels, std::string dump_dir, std::string net_dir, int times, int heat_up_iterations, bool correct_check) {
+void bench_sresDump_cpu(std::string backend, int width, int height, int channels, std::string dump_dir, std::string net_dir, int times, int heat_up_iterations, bool correct_check) {
     // Buffer for weights and biases
     anydsl::Array<float> weights;
     anydsl::Array<float> biases;
@@ -326,14 +363,14 @@ void bench_sresDump_cpu(int width, int height, int channels, std::string dump_di
 
     // Heat-Up iterations
     for (int i = 0; i < heat_up_iterations; i++) {
-        sres_forward_wrap(&img_mat, &out_mat, &weights, &biases, width, height, &nn_memory);
+        sres_forward_wrap(backend, &img_mat, &out_mat, &weights, &biases, width, height, &nn_memory);
     }
 
     reset_counters();
 
     // Time execution
     auto ticks = std::chrono::high_resolution_clock::now();
-    sres_forward_wrap(&img_mat, &out_mat, &weights, &biases, width, height, &nn_memory);
+    sres_forward_wrap(backend, &img_mat, &out_mat, &weights, &biases, width, height, &nn_memory);
     auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
 
     // Check if result is correct (only for the first time)
@@ -355,7 +392,7 @@ void bench_sresDump_cpu(int width, int height, int channels, std::string dump_di
 
     for (int i = 1; i < times; i++) {
         ticks = std::chrono::high_resolution_clock::now();
-        sres_forward_wrap(&img_mat, &out_mat, &weights, &biases, width, height, &nn_memory);
+        sres_forward_wrap(backend, &img_mat, &out_mat, &weights, &biases, width, height, &nn_memory);
         elapsed_ms += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
     }
 outer_break:
@@ -370,7 +407,7 @@ outer_break:
     nn_memory.release();
 }
 
-void bench_sresDump_gpu(int width, int height, int channels, std::string dump_dir, std::string net_dir, int times, int heat_up_iterations, bool correct_check) {
+void bench_sresDump_gpu(std::string backend, int width, int height, int channels, std::string dump_dir, std::string net_dir, int times, int heat_up_iterations, bool correct_check) {
     // GPU mask
     int32_t mask_dst = 0x01;
 
@@ -413,14 +450,14 @@ void bench_sresDump_gpu(int width, int height, int channels, std::string dump_di
 
     // Heat-Up iterations
     for (int i = 0; i < heat_up_iterations; i++) {
-        sres_forward_wrap(&img_mat_gpu, &out_mat_gpu, &weights_gpu, &biases_gpu, width, height, &nn_memory);
+        sres_forward_wrap(backend, &img_mat_gpu, &out_mat_gpu, &weights_gpu, &biases_gpu, width, height, &nn_memory);
     }
 
     reset_counters();
 
     // Time execution
     auto ticks = std::chrono::high_resolution_clock::now();
-    sres_forward_wrap(&img_mat_gpu, &out_mat_gpu, &weights_gpu, &biases_gpu, width, height, &nn_memory);
+    sres_forward_wrap(backend, &img_mat_gpu, &out_mat_gpu, &weights_gpu, &biases_gpu, width, height, &nn_memory);
     auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
 
     // Check if result is correct (only for the first time)
@@ -443,7 +480,7 @@ void bench_sresDump_gpu(int width, int height, int channels, std::string dump_di
 
     for (int i = 1; i < times; i++) {
         ticks = std::chrono::high_resolution_clock::now();
-                sres_forward_wrap(&img_mat_gpu, &out_mat_gpu, &weights_gpu, &biases_gpu, width, height, &nn_memory);
+                sres_forward_wrap(backend, &img_mat_gpu, &out_mat_gpu, &weights_gpu, &biases_gpu, width, height, &nn_memory);
         elapsed_ms += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ticks).count();
     }
 outer_break:
@@ -452,8 +489,8 @@ outer_break:
 
     out_mat.release();
     ref_mat.release();
-    nn_memory.release();
 
+    nn_memory.release();
     img_mat_gpu.release();
     out_mat_gpu.release();
     weights_gpu.release();
@@ -467,17 +504,17 @@ outer_break:
  * Output size: 512x512
  * Free memory required: 1.6GB
  */
-void bench_sresDump512(int times, int heatup_iterations, bool correct_check, bool gpu) {
+void bench_sresDump512(int times, int heatup_iterations, const std::string backend, bool correct_check) {
     const int width  = 256;
     const int height = 256;
     const int channels = 3;
     const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/sres_512/";
     const std::string net_dir  = BENCH_DUMP_DIR "/dumped_data/sres_network/";
 
-    if (gpu)
-        bench_sresDump_gpu(width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
+    if (backend == "cuda" || backend == "cublas" || backend == "cublaslt")
+        bench_sresDump_gpu(backend, width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
     else
-        bench_sresDump_cpu(width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
+        bench_sresDump_cpu(backend, width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
 }
 
 /**
@@ -487,17 +524,17 @@ void bench_sresDump512(int times, int heatup_iterations, bool correct_check, boo
  * Output size: 1024x1024
  * Free memory required: 6.5GB
  */
-void bench_sresDump1k(int times, int heatup_iterations, bool correct_check, bool gpu) {
+void bench_sresDump1k(int times, int heatup_iterations, const std::string backend, bool correct_check) {
     const int width  = 512;
     const int height = 512;
     const int channels = 3;
     const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/sres_1k/";
     const std::string net_dir  = BENCH_DUMP_DIR "/dumped_data/sres_network/";
 
-    if (gpu)
-        bench_sresDump_gpu(width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
+    if (backend == "cuda" || backend == "cublas" || backend == "cublaslt")
+        bench_sresDump_gpu(backend, width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
     else
-        bench_sresDump_cpu(width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
+        bench_sresDump_cpu(backend, width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
 }
 
 /******** MATMUL SRES ********/
@@ -540,8 +577,8 @@ void bench_sres_matmulDump(int times, int heatup_iterations, bool correct_check)
     anydsl::Array<float> ref_mat(width * height * out_channels);
 
     // Read in weights and biases of neural network
-    read_in_weigths_chw(weights.data(), 0, BENCH_DUMP_DIR "/dumped_data/sres_matmul/upconv1.txt", 64, 32, 5);
-    read_in_biases(biases, 0, BENCH_DUMP_DIR "/dumped_data/sres_matmul/uc1bias.txt", 32);
+    read_in_weigths_chw(weights.data(), 0, BENCH_DUMP_DIR "/dumped_data/sres_network/upconv1.txt", 64, 32, 5);
+    read_in_biases(biases, 0, BENCH_DUMP_DIR "/dumped_data/sres_network/uc1bias.txt", 32);
 
     // Read in dumped data of hidden layers
     read_in_matrix_chw(in_mat.data(), BENCH_DUMP_DIR "/dumped_data/sres_matmul/conv4_in.txt", in_channels, height, width);

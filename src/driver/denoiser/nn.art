@@ -9,10 +9,7 @@ struct NNDEN {
    and trained by Hendrik Junkawitsch as part of his bachelors thesis.
    The network's design is pretty much the same as OIDN, only small changes to
    the number of feature maps were made. */
-fn @make_denoise_nn(kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNDEN {
-    /* Change configuration of what backend to use here */
-    let nn_int = get_cublas_nn();
-
+fn @make_denoise_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNDEN {
     /* Kernel size and poolsize is the same for every convolution / pooling layer */
     let ksize    = 3;
     let ksize_sq = ksize * ksize;
