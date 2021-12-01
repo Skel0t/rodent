@@ -110,7 +110,6 @@ fn @matmul_cublas_test(a_buf: &Buffer, b_buf: &Buffer, c_buf: &Buffer) -> () {
     matmul_cublas(a_mat, b_mat, @ |_| 0, id, *c_buf, 0);
 }
 
-// TODO: Split into 5 functions
 #[export]
 fn @sres_forward_cpu(img_mat: &Buffer, out_buf: &Buffer, flattened_kernels: &Buffer,
                  biases: &Buffer, width: i32, height: i32, memory: &Buffer) {

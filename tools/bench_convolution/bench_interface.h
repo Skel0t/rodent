@@ -1,17 +1,26 @@
 #ifndef BENCH_INTERFACE_H
 #define BENCH_INTERFACE_H
 #include <anydsl_runtime.hpp>
+#include <cstring>
 
 #if defined(__x86_64__) || defined(__amd64__) || defined(_M_X64)
 #include <x86intrin.h>
 #endif
 
 /* Functions that ought to be called in main for benchmarking and testing purposes. */
-void bench_denoiseDump512(int times = 1, int heatup_iterations = 0, std::string backend = "cpu", bool correct_check = false);
-void bench_denoiseDump1k(int times = 1, int heatup_iterations = 0, std::string backend = "cpu", bool correct_check = false);
+void bench_denoiseDump512(int times = 1, int heatup_iterations = 0, std::string backend = "cpu",
+        bool correct_check = false, std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/denoising_512x512/",
+        std::string net_dir = BENCH_DUMP_DIR "/../../network");
+void bench_denoiseDump1k(int times = 1, int heatup_iterations = 0, std::string backend = "cpu",
+        bool correct_check = false, std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/denoising_1kx1k/",
+        std::string net_dir = BENCH_DUMP_DIR "/../../network");
 
-void bench_sresDump512(int times = 1, int heatup_iterations = 0, std::string backend = "cpu", bool correct_check = false);
-void bench_sresDump1k(int times = 1, int heatup_iterations = 0, std::string backend = "cpu", bool correct_check = false);
+void bench_sresDump512(int times = 1, int heatup_iterations = 0, std::string backend = "cpu",
+        bool correct_check = false, std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/sres_512/",
+        std::string net_dir = BENCH_DUMP_DIR "/dumped_data/sres_network/");
+void bench_sresDump1k(int times = 1, int heatup_iterations = 0, std::string backend = "cpu",
+        bool correct_check = false, std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/sres_1k/",
+        std::string net_dir = BENCH_DUMP_DIR "/dumped_data/sres_network/");
 
 void bench_sres_matmulDump(int times = 1, int heatup_iterations = 0, bool correct_check = false);
 

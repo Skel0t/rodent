@@ -1,6 +1,5 @@
 #include <iostream>
 #include <chrono>
-#include <cstring>
 
 #include <anydsl_runtime.hpp>
 
@@ -58,7 +57,7 @@ int main(int argc, char** argv) {
 
 /******** DENOISING ********/
 
-void bench_denoiseDump_cpu(std::string backend, int width, int height, int channels, std::string dump_dir, int times, int heat_up_iterations, bool correct_check) {
+void bench_denoiseDump_cpu(std::string backend, int width, int height, int channels, std::string dump_dir, std::string net_dir, int times, int heat_up_iterations, bool correct_check) {
     // Buffer for weights and biases
     anydsl::Array<float> weights;
     anydsl::Array<float> biases;
@@ -73,7 +72,7 @@ void bench_denoiseDump_cpu(std::string backend, int width, int height, int chann
     auto nn_memory = anydsl::Array<uint8_t>(get_necessary_mem(width, height));
 
     // Read in weights and biases of neural network
-    read_in(&weights, &biases);
+    read_in(&weights, &biases, net_dir);
 
     // Read in dumped data of forwarding routine
     read_in_matrix_hwc(img_mat.data(), dump_dir + "img_mat.txt", channels, height, width);
@@ -129,7 +128,7 @@ outer_break:
     biases.release();
 }
 
-void bench_denoiseDump_gpu(std::string backend, int width, int height, int channels, std::string dump_dir, int times, int heat_up_iterations, bool correct_check) {
+void bench_denoiseDump_gpu(std::string backend, int width, int height, int channels, std::string dump_dir, std::string net_dir, int times, int heat_up_iterations, bool correct_check) {
     // Buffer for weights and biases
     anydsl::Array<float> weights;
     anydsl::Array<float> biases;
@@ -157,7 +156,7 @@ void bench_denoiseDump_gpu(std::string backend, int width, int height, int chann
     auto nn_memory  = anydsl::Array<uint8_t>(mask_dst, reinterpret_cast<uint8_t*>(anydsl_alloc(mask_dst, necess_mem * sizeof(uint8_t))), necess_mem);
 
     // Read in weights and biases of neural network
-    read_in(&weights, &biases);
+    read_in(&weights, &biases, net_dir);
 
     // Read in dumped data of forwarding routine
     read_in_matrix_hwc(img_mat.data(), dump_dir + "img_mat.txt", channels, height, width);
@@ -196,14 +195,6 @@ void bench_denoiseDump_gpu(std::string backend, int width, int height, int chann
     if (correct_check) {
         // copy result back to cpu
         anydsl_copy(mask_dst, out_mat_gpu.data(), 0, 0, out_mat.data(), 0, sizeof(float) * out_mat.size());
-
-        int row = 20;
-        int col = 0;
-        int chn = 1;
-        std::cout << "Out: " << out_mat.data()[row * width * channels + col * channels + chn]
-                << "\tRef: " << ref_mat.data()[chn * width * height + row * width + col] << std::endl;
-
-
         for (size_t chn = 0; chn < channels; chn++) {
             for (size_t row = 0; row < height; row++) {
                 for (size_t col = 0; col < width; col++) {
@@ -246,17 +237,16 @@ outer_break:
  * Input size: 512x512
  * Free memory required: 0.7GB
  */
-void bench_denoiseDump512(int times, int heatup_iterations, std::string backend, bool correct_check) {
+void bench_denoiseDump512(int times, int heatup_iterations, std::string backend, bool correct_check, std::string dump_dir, std::string net_dir) {
     // Constant values used in the dumped data
     const int width  = 512;
     const int height = 512;
     const int channels = 3;
-    const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/denoising_512x512/";
 
     if (backend == "cuda" || backend == "cublas" || backend == "cublaslt")
-        bench_denoiseDump_gpu(backend, width, height, channels, dump_dir, times, heatup_iterations, correct_check);
+        bench_denoiseDump_gpu(backend, width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
     else
-        bench_denoiseDump_cpu(backend, width, height, channels, dump_dir, times, heatup_iterations, correct_check);
+        bench_denoiseDump_cpu(backend, width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
 }
 
 /**
@@ -265,17 +255,16 @@ void bench_denoiseDump512(int times, int heatup_iterations, std::string backend,
  * Input size: 1024x1024
  * Free memory required: 2.7GB
  */
-void bench_denoiseDump1k(int times, int heatup_iterations, std::string backend, bool correct_check) {
+void bench_denoiseDump1k(int times, int heatup_iterations, std::string backend, bool correct_check, std::string dump_dir, std::string net_dir) {
     // Constant values used in the dumped data
     const int width  = 1024;
     const int height = 1024;
     const int channels = 3;
-    const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/denoising_1kx1k/";
 
     if (backend == "cuda" || backend == "cublas" || backend == "cublaslt")
-        bench_denoiseDump_gpu(backend, width, height, channels, dump_dir, times, heatup_iterations, correct_check);
+        bench_denoiseDump_gpu(backend, width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
     else
-        bench_denoiseDump_cpu(backend, width, height, channels, dump_dir, times, heatup_iterations, correct_check);
+        bench_denoiseDump_cpu(backend, width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
 }
 
 /******** SRES ********/
@@ -504,12 +493,10 @@ outer_break:
  * Output size: 512x512
  * Free memory required: 1.6GB
  */
-void bench_sresDump512(int times, int heatup_iterations, const std::string backend, bool correct_check) {
+void bench_sresDump512(int times, int heatup_iterations, const std::string backend, bool correct_check, std::string dump_dir, std::string net_dir) {
     const int width  = 256;
     const int height = 256;
     const int channels = 3;
-    const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/sres_512/";
-    const std::string net_dir  = BENCH_DUMP_DIR "/dumped_data/sres_network/";
 
     if (backend == "cuda" || backend == "cublas" || backend == "cublaslt")
         bench_sresDump_gpu(backend, width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
@@ -524,12 +511,10 @@ void bench_sresDump512(int times, int heatup_iterations, const std::string backe
  * Output size: 1024x1024
  * Free memory required: 6.5GB
  */
-void bench_sresDump1k(int times, int heatup_iterations, const std::string backend, bool correct_check) {
+void bench_sresDump1k(int times, int heatup_iterations, const std::string backend, bool correct_check, std::string dump_dir, std::string net_dir) {
     const int width  = 512;
     const int height = 512;
     const int channels = 3;
-    const std::string dump_dir = BENCH_DUMP_DIR "/dumped_data/sres_1k/";
-    const std::string net_dir  = BENCH_DUMP_DIR "/dumped_data/sres_network/";
 
     if (backend == "cuda" || backend == "cublas" || backend == "cublaslt")
         bench_sresDump_gpu(backend, width, height, channels, dump_dir, net_dir, times, heatup_iterations, correct_check);
