@@ -192,6 +192,7 @@ fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
             c_acc.write(row, col, 0, act_fn(v));
         }
     }
+    acc.sync();
 
     c
 }
@@ -209,9 +210,6 @@ fn @matmul_cublas(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
     let block = (threads_x, threads_y, 1);
     let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), c.channels);
 
-    // cublas kernels do not wait for kernels computing a and b to finish
-    acc.sync();
-
     cublas_S_gemm(
         /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))),
         /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))),
@@ -228,6 +226,7 @@ fn @matmul_cublas(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
             c_acc.write(row, col, chn, act_fn(c_acc.read(row, col, chn) + biases(row)));  // 1 channel per row, thus access row-th bias
         }
     }
+    acc.sync();
 
     c
 }
@@ -263,6 +262,7 @@ fn @matmul_cublaslt(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32
             c_acc.write(row, col, chn, act_fn(c_acc.read(row, col, chn) + biases(row)));  // 1 channel per row, thus access row-th bias
         }
     }
+    acc.sync();
 
     c
 }
@@ -303,6 +303,7 @@ fn @add_element_wise_gpu(a: Matrix, b_acc: AccM, buf: Buffer, off: i64) -> Matri
             res_acc.write(row, col, chn, b_acc.read(row, col, chn) + a_acc.read(row, col, chn));
         }
     }
+    acc.sync();
 
     res_mat
 }
@@ -341,6 +342,7 @@ fn @chw_to_hwc_gpu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
             res_acc.write(row, col, chn, img_acc.read(row, col, chn));
         }
     }
+    acc.sync();
 
     res_mat
 }

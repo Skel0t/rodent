@@ -96,6 +96,7 @@ fn @pool_gpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, 
                 r_acc.write(row, col, chn, val);
             }
         }
+        acc.sync();
     });
 
     res_mat

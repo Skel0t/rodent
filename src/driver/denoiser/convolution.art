@@ -87,6 +87,7 @@ fn @im2col_gpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_he
             }
         }
     }
+    acc.sync(); // Wait for im2col matrix to be fully calculated
 
     res_mat
 }
