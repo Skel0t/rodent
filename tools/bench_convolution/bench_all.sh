@@ -20,23 +20,23 @@ echo "Benchmarking time:" > $CONSOLE_OUT
 echo "Benchmarking time:"
 
 # Time and where it is spent on GPU and CPU
-for ((i=0;i < ${#PLATFORMS[@]}; i++))
-do
-    echo "Benchmarking time on ${PLATFORMS[$i]}..."
-    echo "--------------------------------------------------------------------------------" >> $CONSOLE_OUT
-    echo "Benchmarking device ${DEVICES[$i]} on platform ${PLATFORMS[$i]} with ${ITERATIONS[$i]}/${WARMUP[$i]} iterations/warmup" >> $CONSOLE_OUT
-    echo "--------------------------------------------------------------------------------" >> $CONSOLE_OUT
+# for ((i=0;i < ${#PLATFORMS[@]}; i++))
+# do
+#     echo "Benchmarking time on ${PLATFORMS[$i]}..."
+#     echo "--------------------------------------------------------------------------------" >> $CONSOLE_OUT
+#     echo "Benchmarking device ${DEVICES[$i]} on platform ${PLATFORMS[$i]} with ${ITERATIONS[$i]}/${WARMUP[$i]} iterations/warmup" >> $CONSOLE_OUT
+#     echo "--------------------------------------------------------------------------------" >> $CONSOLE_OUT
 
-    for ((j=0;j < ${#BENCHMARKS[@]}; j++))
-    do
-        echo -ne "${BENCHMARKS[$j]}:\n" >> $CONSOLE_OUT
-        $BENCH_BINARY_PATH/bench_convolution --bench ${BENCHMARKS[$j]} --iterations ${ITERATIONS[$i]} --warmup ${WARMUP[$i]} --backend ${PLATFORMS[$i]} >> $CONSOLE_OUT
-        echo -ne "\n" >> $CONSOLE_OUT
-        sleep 10
-    done
+#     for ((j=0;j < ${#BENCHMARKS[@]}; j++))
+#     do
+#         echo -ne "${BENCHMARKS[$j]}:\n" >> $CONSOLE_OUT
+#         $BENCH_BINARY_PATH/bench_convolution --bench ${BENCHMARKS[$j]} --iterations ${ITERATIONS[$i]} --warmup ${WARMUP[$i]} --backend ${PLATFORMS[$i]} >> $CONSOLE_OUT
+#         echo -ne "\n" >> $CONSOLE_OUT
+#         sleep 10
+#     done
 
-    echo "Benchmarking time on ${PLATFORMS[$i]} done."
-done
+#     echo "Benchmarking time on ${PLATFORMS[$i]} done."
+# done
 
 # Occupancy is defined as the ratio of active warps on an SM to the maximum number of active warps supported by the SM.
 # https://docs.nvidia.com/gameworks/content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedoccupancy.htm
@@ -64,7 +64,7 @@ do
     do
         LOGFILE=benchmarks/${PLATFORMS[$i]}_${BENCHMARKS[$j]}.txt
         echo -ne "${BENCHMARKS[$j]}:\n" > $NULL_OUT
-        nvprof --log-file $LOGFILE --metrics achieved_occupancy,tex_cache_hit_rate,l2_tex_hit_rate --replay-mode application $BENCH_BINARY_PATH/bench_convolution --bench ${BENCHMARKS[$j]} --iterations ${ITERATIONS[$i]} --warmup ${WARMUP[$i]} --backend ${PLATFORMS[$i]} > $NULL_OUT
+        nvprof --csv --log-file $LOGFILE --metrics achieved_occupancy,tex_cache_hit_rate,l2_tex_hit_rate --replay-mode application $BENCH_BINARY_PATH/bench_convolution --bench ${BENCHMARKS[$j]} --iterations ${ITERATIONS[$i]} --warmup ${WARMUP[$i]} --backend ${PLATFORMS[$i]} > $NULL_OUT
         sleep 20
     done
     echo -ne "\n" > $NULL_OUT
