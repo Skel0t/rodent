@@ -30,8 +30,6 @@ extern "C" {
 
         float a = 1.f, b = 0.f;
 
-        // TODO maybe: Can apply bias and relu within the multiplication algorithm
-
         cublasLtMatmul(handlelt,
                     descriptor,     // description
                     &a,             // alpha

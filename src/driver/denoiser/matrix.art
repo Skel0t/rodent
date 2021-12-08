@@ -173,7 +173,6 @@ fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
     let b_acc = get_mat_acc(b);
     let c_acc = get_mat_acc(c);
 
-// TODO: Test different blocksizes, if it makes a difference
     let threads_x = 32;
     let threads_y = 32;
     let block = (threads_x, threads_y, 1);    // 32 * 32 * 1 = 1024 Threads per block
@@ -185,7 +184,6 @@ fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
 
         if row < c.rows && col < c.cols {
             let mut v = biases(row);
-            // TODO: Try unrolling and check for difference
             for i in range(0, a.cols) {
                 v = v + a_acc.read(row, i, 0) * b_acc.read(i, col, 0);
             }
