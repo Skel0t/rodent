@@ -2,9 +2,19 @@
 
 Rodent is a BVH traversal library and renderer implemented using the AnyDSL compiler framework (https://anydsl.github.io/).
 
+This fork integrates a denoising autoencoder into the renderer.
+
+**Note**: This branch is the preliminary version that integrates OIDN.
+Therefore, the code might not be as cleaned up as in the final version on the artic branch.
+
 # Building
 
-The dependencies are: CMake, AnyDSL, libpng, SDL2, and optionally the Embree sources for the benchmarking tools.
+The dependencies for Rodent are: CMake, AnyDSL, libpng, SDL2, and optionally the Embree sources for the benchmarking tools.
+
+Additional dependencies for the denoising are: OIDN.
+The build will fail if either of these is not installed.
+However, the denoising can work independently without the use of any of these libraries by native implementations in AnyDSL.
+
 Once the dependencies are installed, use the following commands to build the project:
 
     mkdir build
@@ -16,30 +26,34 @@ Once the dependencies are installed, use the following commands to build the pro
     # cmake .. -DEMBREE_ROOT_DIR=<path to Embree sources>
     make
 
+
 # Testing
 
-This section assumes that the current directory is the build directory. To run rodent, just type:
+This section assumes that the current directory is the build directory. To run Rodent, just type:
 
     bin/rodent
 
-You may want to change the initial camera parameters using the command line options `--eye`, `--dir` and `--up`. Run `bin/rodent --help` to get a full list of options.
+You may want to change the initial camera parameters using the command line
+options `--eye`, `--dir`, and `--up`. Also, to activate denoising, add the `--oidn` flag.
 
-When ImageMagick is found by CMake, use the following commands to test the traversal code with the provided test scene:
+Run `bin/rodent --help` to get a full list of options.
 
-    make test
 
-This will only test the primary ray distribution with the packet, single, and hybrid variants.
-To test all possible combinations, or if you do not have ImageMagick installed, use the benchmarking tool directly:
+# Intel's Open Image Denoise
 
-    bin/bench_traversal -bvh ../testing/sponza.bvh -ray ../testing/sponza-primary.rays --bench 50 --warmup 10 --tmax 5000 -o output-hybrid-primary.fbuf
-    bin/bench_traversal -bvh ../testing/sponza.bvh -ray ../testing/sponza-primary.rays --bench 50 --warmup 10 --tmax 5000 -s -o output-single-primary.fbuf
-    bin/bench_traversal -bvh ../testing/sponza.bvh -ray ../testing/sponza-random.rays --bench 50 --warmup 10 --tmax 1 -o output-hybrid-random.fbuf
-    bin/bench_traversal -bvh ../testing/sponza.bvh -ray ../testing/sponza-random.rays --bench 50 --warmup 10 --tmax 1 -s -o output-single-random.fbuf
-    bin/fbuf2png -n output-hybrid-primary.fbuf output-hybrid-primary.png
-    bin/fbuf2png -n output-single-primary.fbuf output-single-primary.png
-    bin/fbuf2png -n output-hybrid-random.fbuf output-hybrid-random.png
-    bin/fbuf2png -n output-single-random.fbuf output-single-random.png
+This branch is the preliminary version that integrates OIDN.
 
-This will run the traversal on the test set, and generate images as a result. For the primary ray distribution, the _hybrid_ and _single_ variants should generate the same images. The reference images for primary and random rays are in the `testing` directory.
+To return to the actual implementation again, use
 
-Running `bin/bench_traversal --help` will provide a list of additional options.
+```
+git checkout artic
+```
+
+# About the Segfault when executing Rodent on the CPU
+
+When Rodent is executed on the CPU (default), a segfault happens at the very end,
+when rendering is stopped.
+This segfault already happens in the default version that I forked to implement
+the denoiser. Thus, my code should be segfault-free and also release all memory
+allocated by me. Executing Rodent with, for example, the `nvvm`
+backend does not cause a segfault.

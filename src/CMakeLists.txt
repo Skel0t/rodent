@@ -6,7 +6,7 @@ set(MEGAKERNEL_FUSION ON CACHE BOOL "Set to true to enable simple shader fusion 
 set(MAX_PATH_LEN "64" CACHE STRING "Maximum path length")
 set(DISABLE_GUI OFF CACHE BOOL "Set to true to disable GUI")
 set(SPP "4" CACHE STRING "Samples per pixel")
-set(OIDN OFF CACHE BOOL "Set to true to enable OIDN support")
+set(OIDN ON CACHE BOOL "Set to true to enable OIDN support")
 if (SCENE_FILE STREQUAL "")
     message(FATAL_ERROR "Please specify a valid OBJ scene in the SCENE_FILE variable")
 endif()
