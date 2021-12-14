@@ -81,15 +81,19 @@ for profiling as well.
 
 # Intel's Open Image Denoise
 
-As the goal was to integrate a native denoiser into Rodent, leaving the dependency of having installed OIDN would not add much value. Furthermore, it would make the code less readable. Therefore, the integration of OIDN, which was described in my thesis, is not included in the end result anymore.
+As the goal was to integrate a native denoiser into Rodent, leaving the dependency
+of having installed OIDN would not add much value and would make the code less
+readable. Therefore, the integration of OIDN, which was described in my thesis, is
+not included in the end result anymore.
 
 However, I left the git history in this submission such that one can fall back to the OIDN integration and test it. The corresponding commit can be reached with
 
 ```
-git checkout 6aeabbcff3f406b5e93d14450bde798ff98ceedc
+git checkout oidn
 ```
 
-However, the CLI worked slightly differently at that commit. To denoise with OIDN, one must first set the OIDN cmake flag. Then, by adding the `--oidn` flag to Rodent's execution, live denoising should work.
+However, the CLI worked slightly differently at that commit. To denoise with OIDN,
+add the `--oidn` flag to Rodent's execution.
 
 To return to the actual implementation again, use
 
