@@ -44,9 +44,10 @@ void read_in_weigths_chw(float* buffer, int offset, std::string path, int in_cha
             }
         }
     }
+    // std::cout << "read weights: " << path << " with offset " << offset << std::endl;
 }
 
-void read_in_biases(float* buffer, int offset, std::string path, int out_channels) {
+void read_in_biases(float* buffer, int& offset, std::string path, int out_channels) {
     std::fstream f;
     f.open(path, std::ios::in);
     if (!f) {
@@ -57,6 +58,8 @@ void read_in_biases(float* buffer, int offset, std::string path, int out_channel
             f >> buffer[offset + i];
         }
     }
+    offset += out_channels;
+    // std::cout << "read biases: " << path << " with offset " << offset << std::endl;
 }
 
 void read_in_matrix_chw(float* buffer, std::string path, int channels, int rows, int cols) {

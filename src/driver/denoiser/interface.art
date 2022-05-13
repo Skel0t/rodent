@@ -5,7 +5,15 @@
 /* Returns necessary memory for the denoising neural network, so that it can be
    allocated in C++. Hard coded constants integrated denoising network. */
 #[export]
-fn @get_necessary_mem(width: i32, height: i32) -> i64 {
+fn @get_necessary_mem(width: i32, height: i32, net_id: i32) -> i64 {
+    match net_id {
+        0 => get_necessary_mem_own(width, height),
+        1 => get_necessary_mem_oidn(width, height),
+        _ => 0
+    }
+}
+
+fn @get_necessary_mem_own(width: i32, height: i32) -> i64 {
     let size_im2col = (width as i64) * (height as i64) * (9 as i64) * (73 /* max(<in channels>/<shrinked_size>) */ as i64);  /* max size for im2col matrix */
     let size_img    = (width as i64) * (height as i64) * (32 /* max(<out channels>/<shrinked_size>) */ as i64); /* max size to save matmul output */
     /* sizes to save cross-connections */
@@ -16,53 +24,65 @@ fn @get_necessary_mem(width: i32, height: i32) -> i64 {
     4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3)
 }
 
+fn @get_necessary_mem_oidn(width: i32, height: i32) -> i64 {
+    let size_im2col = (width as i64) * (height as i64) * (9 as i64) * (73 /* max(<in channels>/<shrinked_size>) */ as i64);  /* max size for im2col matrix */
+    let size_img    = (width as i64) * (height as i64) * (64 /* max(<out channels>/<shrinked_size>) */ as i64); /* max size to save matmul output */
+    /* sizes to save cross-connections */
+    let size_pool_3 = (width as i64) * (height as i64) * (64 as i64) / (4 * 4 * 4);
+    let size_pool_2 = (width as i64) * (height as i64) * (48 as i64) / (4 * 4);
+    let size_pool_1 = (width as i64) * (height as i64) * (32 as i64) / (4);
+
+    4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3)
+}
+
+fn @fw(nn_int: NNInt, img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &Buffer,
+    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer, network: i32) -> () {
+    if (network == 0){
+        let nn = make_denoise_nn(nn_int, *kernels, *biases, width, height);
+        nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
+    } else {
+        let nn = make_oidn_nn(nn_int, *kernels, *biases, width, height);
+        nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
+    }
+}
+
 /* Interface function to denoise with the given data with the denoising network. */
 /* Duplicated for each platform, to allow partial evaluation for everything.
    This lets compilation times explode, thus for short compilation time, comment
    out the unused platforms. */
 #[export]
 fn @forward_denoise_cpu(img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &Buffer,
-                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer) -> () {
+                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer, network: i32) -> () {
     let nn_int = get_cpu_nn();
-    let nn = make_denoise_nn(nn_int, *kernels, *biases, width, height);
-
-    nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
+    fw(nn_int, img_buf, alb_buf, nrm_buf, mem, width, height, out_buf, kernels, biases, network);
 }
 
 #[export]
 fn @forward_denoise_oneapi(img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &Buffer,
-                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer) -> () {
+                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer, network: i32) -> () {
     let nn_int = get_oneapi_nn();
-    let nn = make_denoise_nn(nn_int, *kernels, *biases, width, height);
-
-    nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
+    fw(nn_int, img_buf, alb_buf, nrm_buf, mem, width, height, out_buf, kernels, biases, network);
 }
 
 #[export]
 fn @forward_denoise_cuda(img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &Buffer,
-                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer) -> () {
-    let nn_int = get_cuda_nn();
-    let nn = make_denoise_nn(nn_int, *kernels, *biases, width, height);
-
-    nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
+                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer, network: i32) -> () {
+    // let nn_int = get_cuda_nn();
+    // fw(nn_int, img_buf, alb_buf, nrm_buf, mem, width, height, out_buf, kernels, biases, network);
 }
 
 #[export]
 fn @forward_denoise_cublas(img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &Buffer,
-                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer) -> () {
-    let nn_int = get_cublas_nn();
-    let nn = make_denoise_nn(nn_int, *kernels, *biases, width, height);
-
-    nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
+                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer, network: i32) -> () {
+    // let nn_int = get_cublas_nn();
+    // fw(nn_int, img_buf, alb_buf, nrm_buf, mem, width, height, out_buf, kernels, biases, network);
 }
 
 #[export]
 fn @forward_denoise_cublaslt(img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &Buffer,
-                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer) -> () {
-    let nn_int = get_cublaslt_nn();
-    let nn = make_denoise_nn(nn_int, *kernels, *biases, width, height);
-
-    nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
+                    width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer, network: i32) -> () {
+    // let nn_int = get_cublaslt_nn();
+    // fw(nn_int, img_buf, alb_buf, nrm_buf, mem, width, height, out_buf, kernels, biases, network);
 }
 
 /* Divide image by given number of samples and gamma_correct if argument given.

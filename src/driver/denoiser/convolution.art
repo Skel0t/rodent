@@ -1,3 +1,16 @@
+fn @make_conv2d_fn(nn_int: NNInt, kernelsizes: fn(i32) -> i32, in_channels: fn(i32) -> i32, out_channels: fn(i32) -> i32, flattened_kernels: fn(i32) -> Matrix, biases: fn(i32) -> fn(i32) -> f32, act_fn: fn(i32) -> fn(f32) -> f32) {
+    let conv = make_conv2d_acc_fn(nn_int, kernelsizes, in_channels, out_channels, flattened_kernels, biases, act_fn);
+
+    @|img_mat: Matrix, w_idx: i32, buf: Buffer, off: i64, off_res: i64|
+    conv(get_mat_acc(img_mat), img_mat.rows, img_mat.cols, w_idx, buf, off, off_res)
+}
+
+fn @make_conv2d_acc_fn(nn_int: NNInt, kernelsizes: fn(i32) -> i32, in_channels: fn(i32) -> i32, out_channels: fn(i32) -> i32, flattened_kernels: fn(i32) -> Matrix, biases: fn(i32) -> fn(i32) -> f32, act_fn: fn(i32) -> fn(f32) -> f32) {
+
+    @|acc: AccM, rows: i32, cols: i32, w_idx: i32, buf: Buffer, off: i64, off_res: i64|
+    cat_conv2d(nn_int, kernelsizes(w_idx), out_channels(w_idx), in_channels(w_idx), flattened_kernels(w_idx), biases(w_idx), act_fn(w_idx), rows, cols, acc, buf, off, off_res)
+}
+
 /* Computes the im2col matrix, storing it in buf at position off.
    Currently only supports a stride of 1.
    For a bigger stride, r and c need to be scaled by it in the calculation of p_row and p_col.

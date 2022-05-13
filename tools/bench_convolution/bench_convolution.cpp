@@ -97,7 +97,7 @@ void bench_denoiseDump_cpu(std::string backend, int width, int height, int chann
         for (size_t chn = 0; chn < channels; chn++) {
             for (size_t row = 0; row < height; row++) {
                 for (size_t col = 0; col < width; col++) {
-                    if (abs(out_mat.data()[row * width * channels + col * channels + chn] - ref_mat.data()[chn * width * height + row * width + col]) > 1.0e-4) {
+                    if (abs(out_mat.data()[row * width * channels + col * channels + chn] - ref_mat.data()[chn * width * height + row * width + col]) > 1.0e-5) {
                         std::cout << "Diff at:\t" << chn << "\t" << col << "\t" << row << "\t(chn, x, y)" << std::endl;
                         std::cout << "Was:\t\t" << out_mat.data()[row * width * channels + col * channels + chn] << "\n"
                             << "Should be:\t" << ref_mat.data()[chn * width * height + row * width + col] << std::endl;
@@ -303,21 +303,22 @@ void read_in_sres(anydsl::Array<float>* weights, anydsl::Array<float>* biases, s
     read_in_weigths_chw(w, offset, network_path + "/conv6.txt",   32,  3, 3);
 
     float* b = biases->data();
-    read_in_biases(b, 0                     , network_path + "/c1bias.txt",  32);
-    read_in_biases(b, 32                    , network_path + "/c2bias.txt",  64);
-    read_in_biases(b, 32 + 64               , network_path + "/c3bias.txt",  64);
-    read_in_biases(b, 32 + 64 + 64          , network_path + "/uc1bias.txt", 32);
-    read_in_biases(b, 32 + 64 + 64 + 32     , network_path + "/c4bias.txt",  32);
-    read_in_biases(b, 32 + 64 + 64 + 32 + 32, network_path + "/c5bias.txt",  32);
+    offset = 0;
+    read_in_biases(b, offset, network_path + "/c1bias.txt",  32);
+    read_in_biases(b, offset, network_path + "/c2bias.txt",  64);
+    read_in_biases(b, offset, network_path + "/c3bias.txt",  64);
+    read_in_biases(b, offset, network_path + "/uc1bias.txt", 32);
+    read_in_biases(b, offset, network_path + "/c4bias.txt",  32);
+    read_in_biases(b, offset, network_path + "/c5bias.txt",  32);
 }
 
 void sres_forward_wrap(std::string denoising_backend, anydsl::Array<float>* img_mat, anydsl::Array<float>* out_mat, anydsl::Array<float>* weights,
                  anydsl::Array<float>* biases, int32_t width, int32_t height, anydsl::Array<uint8_t>* memory) {
-    Buffer img_mat_buf = { (char*) img_mat->data(),  img_mat->size(),  img_mat->device()  };
-    Buffer weights_buf = { (char*) weights->data(),  weights->size(),  weights->device()  };
-    Buffer biases_buf  = { (char*) biases->data(),   biases->size(),   biases->device()   };
-    Buffer out_mat_buf = { (char*) out_mat->data(),  out_mat->size(),  out_mat->device()  };
-    Buffer memory_buf  = { (char*) memory->data(),   memory->size(),   memory->device()   };
+    Buffer img_mat_buf = { (int8_t*) img_mat->data(),  img_mat->size(),  img_mat->device()  };
+    Buffer weights_buf = { (int8_t*) weights->data(),  weights->size(),  weights->device()  };
+    Buffer biases_buf  = { (int8_t*) biases->data(),   biases->size(),   biases->device()   };
+    Buffer out_mat_buf = { (int8_t*) out_mat->data(),  out_mat->size(),  out_mat->device()  };
+    Buffer memory_buf  = { (int8_t*) memory->data(),   memory->size(),   memory->device()   };
 
     if (denoising_backend == "cuda")
         sres_forward_cuda(&img_mat_buf, &out_mat_buf, &weights_buf, &biases_buf, width, height, &memory_buf);
@@ -367,7 +368,7 @@ void bench_sresDump_cpu(std::string backend, int width, int height, int channels
         for (size_t chn = 0; chn < channels; chn++) {
             for (size_t row = 0; row < height; row++) {
                 for (size_t col = 0; col < width; col++) {
-                    if (abs(out_mat.data()[chn * width * height + row * width + col] - ref_mat.data()[chn * width * height + row * width + col]) > 1.0e-4) {
+                    if (abs(out_mat.data()[chn * width * height + row * width + col] - ref_mat.data()[chn * width * height + row * width + col]) > 1.0e-5) {
                         std::cout << "Diff at:\t" << chn << "\t" << col << "\t" << row << "\t(chn, x, y)" << std::endl;
                         std::cout << "Was:\t\t" << out_mat.data()[chn * width * height + row * width + col] << "\n"
                             << "Should be:\t" << ref_mat.data()[chn * width * height + row * width + col] << std::endl;
@@ -525,9 +526,9 @@ void bench_sresDump1k(int times, int heatup_iterations, const std::string backen
 /******** MATMUL SRES ********/
 
 void sres_matmul_dump_wrap(anydsl::Array<float>* in_mat, anydsl::Array<float>* weights, float* biases, anydsl::Array<float>* out_mat) {
-    Buffer in_mat_buf  = { (char*) in_mat->data(),   in_mat->size(),   in_mat->device()   };
-    Buffer weights_buf = { (char*) weights->data(),  weights->size(),  weights->device()  };
-    Buffer out_mat_buf = { (char*) out_mat->data(),  out_mat->size(),  out_mat->device()  };
+    Buffer in_mat_buf  = { (int8_t*) in_mat->data(),   in_mat->size(),   in_mat->device()   };
+    Buffer weights_buf = { (int8_t*) weights->data(),  weights->size(),  weights->device()  };
+    Buffer out_mat_buf = { (int8_t*) out_mat->data(),  out_mat->size(),  out_mat->device()  };
 
     sres_dump(&in_mat_buf, &weights_buf, biases, &out_mat_buf);
 }
@@ -562,8 +563,9 @@ void bench_sres_matmulDump(int times, int heatup_iterations, bool correct_check)
     anydsl::Array<float> ref_mat(width * height * out_channels);
 
     // Read in weights and biases of neural network
+    int offset = 0;
     read_in_weigths_chw(weights.data(), 0, BENCH_DUMP_DIR "/dumped_data/sres_network/upconv1.txt", 64, 32, 5);
-    read_in_biases(biases, 0, BENCH_DUMP_DIR "/dumped_data/sres_network/uc1bias.txt", 32);
+    read_in_biases(biases, offset, BENCH_DUMP_DIR "/dumped_data/sres_network/uc1bias.txt", 32);
 
     // Read in dumped data of hidden layers
     read_in_matrix_chw(in_mat.data(), BENCH_DUMP_DIR "/dumped_data/sres_matmul/conv4_in.txt", in_channels, height, width);
@@ -614,8 +616,8 @@ outer_break:
 /******** IMAGE TO COLUMN ********/
 
 void im2col_wrap(anydsl::Array<float>* in_mat, anydsl::Array<float>* out_mat) {
-    Buffer in_mat_buf  = { (char*) in_mat->data(),   in_mat->size(),   in_mat->device()   };
-    Buffer out_mat_buf = { (char*) out_mat->data(),  out_mat->size(),  out_mat->device()  };
+    Buffer in_mat_buf  = { (int8_t*) in_mat->data(),   in_mat->size(),   in_mat->device()   };
+    Buffer out_mat_buf = { (int8_t*) out_mat->data(),  out_mat->size(),  out_mat->device()  };
 
     im2col_dump(&in_mat_buf, &out_mat_buf);
 }
@@ -667,9 +669,10 @@ void bench_im2col(bool correct_check) {
 /******** TESTS ********/
 
 void matmul_cublas_test_wrap(anydsl::Array<float>* d_mat_a, anydsl::Array<float>* d_mat_b, anydsl::Array<float>* d_mat_c) {
-    Buffer d_mat_a_b = { (char*) d_mat_a->data(),   d_mat_a->size(),   d_mat_a->device()   };
-    Buffer d_mat_b_b = { (char*) d_mat_b->data(),   d_mat_b->size(),   d_mat_b->device()   };
-    Buffer d_mat_c_b = { (char*) d_mat_c->data(),   d_mat_c->size(),   d_mat_c->device()   };
+    Buffer d_mat_a_b = { (int8_t*) d_mat_a->data(),   d_mat_a->size(),   d_mat_a->device()   };
+    Buffer d_mat_b_b = { (int8_t*) d_mat_b->data(),   d_mat_b->size(),   d_mat_b->device()   };
+    Buffer d_mat_c_b = { (int8_t*) d_mat_c->data(),   d_mat_c->size(),   d_mat_c->device()   };
+
     matmul_cublas_test(&d_mat_a_b, &d_mat_b_b, &d_mat_c_b);
 }
 

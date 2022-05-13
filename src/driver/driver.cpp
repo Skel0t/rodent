@@ -232,12 +232,14 @@ static inline void usage() {
               << "   --live                Enables live denoising if denoise flag is set\n"
               << "   --aux                 Saves rendered normal and albedo image\n"
               << "   --dback   backend     Sets denoising backend (cpu, oneapi, cuda, cublas, cublaslt)\n"
+              << "   --net     nn_name     Sets the denoising network (own, oidn; default: own)\n"
               << "   -o        image.png   Writes the output image to a file" << std::endl;
 }
 
 int main(int argc, char** argv) {
     std::string out_file;
     std::string denoising_backend = "cpu";
+    std::string net_string = "own";
     size_t bench_iter = 0;
     size_t width  = 1024;
     size_t height = 1024;
@@ -292,6 +294,9 @@ int main(int argc, char** argv) {
             } else if (!strcmp(argv[i], "--dback")) {
                 check_arg(argc, argv, i, 1);
                 denoising_backend = argv[++i];
+            } else if (!strcmp(argv[i], "--net")) {
+                check_arg(argc, argv, i, 1);
+                net_string = argv[++i];
             } else {
                 error("Unknown option '", argv[i], "'");
             }
@@ -299,10 +304,12 @@ int main(int argc, char** argv) {
         }
         error("Unexpected argument '", argv[i], "'");
     }
+    NetID network;
     if (dns != "") {
         // Make sure dimensions are divisible by 16 = 2^4 as we pool 4 times
         width = round_up(width, 16);
         height = round_up(height, 16);
+        network = net_string == "own" ? OWN : OIDN;
     }
 
     Camera cam(eye, dir, up, fov, (float)width / (float)height);
@@ -354,6 +361,8 @@ int main(int argc, char** argv) {
     const anydsl::Device denoising_device = anydsl::Device(0);
     const int32_t dev_plat_mask = anydsl::make_device(denoising_platform, denoising_device);
 
+    std::cout << dev_plat_mask << std::endl;
+
     const int img_s = width * height * 3;
     auto spp = get_spp();
     bool done = false;
@@ -363,6 +372,7 @@ int main(int argc, char** argv) {
     std::vector<double> samples_sec;
     live = live && (dns != "");
 
+    // Necessary buffers for denoising
     anydsl::Array<float> pix, alb, nrm, outputPtr;
     anydsl::Array<float> weights, biases;
     anydsl::Array<uint8_t> memory;
@@ -372,9 +382,13 @@ int main(int argc, char** argv) {
 
     /* If denoising enabled, allocate and fill all necessary buffers to denoise. */
     if (dns != "") {
-        read_in(&weights, &biases);
+        long nec_mem = get_necessary_mem(width, height, network);
+        if (network == OWN)
+            read_in(&weights, &biases);
+        else
+            read_in_oidn(&weights, &biases);
 
-        memory = anydsl::Array<uint8_t>(denoising_platform, denoising_device, get_necessary_mem(width, height));
+        memory    = anydsl::Array<uint8_t>(denoising_platform, denoising_device, nec_mem);
 
         pix       = anydsl::Array<float>(denoising_platform, denoising_device, img_s);
         alb       = anydsl::Array<float>(denoising_platform, denoising_device, img_s);
@@ -432,7 +446,7 @@ int main(int argc, char** argv) {
                 gamma_correct_gpu(width, height, iter, nrm.data(), false);
             }
 
-            denoise(denoising_backend, &pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases);
+            denoise(denoising_backend, &pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases, network);
 
             if (dev_plat_mask == 0) {
                 clamp_image(width, height, outputPtr.data());
@@ -507,7 +521,7 @@ int main(int argc, char** argv) {
             anydsl_copy(0, get_alb_pixels(), 0, dev_plat_mask, alb.data(), 0, img_s * sizeof(float));
             anydsl_copy(0, get_nrm_pixels(), 0, dev_plat_mask, nrm.data(), 0, img_s * sizeof(float));
 
-            denoise(denoising_backend, &pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases);
+            denoise(denoising_backend, &pix, &alb, &nrm, &memory, &outputPtr, width, height, &weights, &biases, network);
 
             if (dev_plat_mask == 0) {
                 clamp_image(width, height, outputPtr.data());
