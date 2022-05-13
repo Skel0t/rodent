@@ -547,17 +547,17 @@ fn @make_oidn_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, hei
             img_mat = conv_fn(img_mat, 7, mem, size_img, 0);
 
             // Convolution 8
-            let mut mat_acc_1 = nearest_acc(img_mat);
-            let mut cat_acc_1 = get_cat_mat_acc(mat_acc_1, pool_3, img_mat.channels);
+            let mat_acc_1 = nearest_acc(img_mat);
+            let cat_acc_1 = get_cat_mat_acc(mat_acc_1, pool_3, img_mat.channels);
             img_mat = conv_acc_fn(cat_acc_1, 2 * img_mat.rows, 2 * img_mat.cols, 8, mem, size_img, 0);
 
             // Convolution 9
             img_mat = conv_fn(img_mat, 9, mem, size_img, 0);
 
             // Convolution 10
-            mat_acc_1 = nearest_acc(img_mat);
-            cat_acc_1 = get_cat_mat_acc(mat_acc_1, pool_2, img_mat.channels);
-            img_mat = conv_acc_fn(cat_acc_1, 2 * img_mat.rows, 2 * img_mat.cols, 10, mem, size_img, 0);
+            let mat_acc_2 = nearest_acc(img_mat);
+            let cat_acc_2 = get_cat_mat_acc(mat_acc_2, pool_2, img_mat.channels);
+            img_mat = conv_acc_fn(cat_acc_2, 2 * img_mat.rows, 2 * img_mat.cols, 10, mem, size_img, 0);
 
             // Convolution 11
             img_mat = conv_fn(img_mat, 11, mem, size_img, 0);
