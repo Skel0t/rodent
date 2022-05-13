@@ -31,7 +31,7 @@ fn @get_oneapi_nn() -> NNInt {
 
 fn @get_cuda_nn() -> NNInt {
     NNInt {
-        matmul     = matmul_gpu,
+        matmul     = matmul_gpu_try,
         im2col     = im2col_gpu,
         pool       = pool_gpu,
         // nearest    = NOT_IMPLEMENTED,

@@ -1,11 +1,19 @@
 /* Leaky ReLu with slope 0.01 in the negative domain to use as activation function.
    Works on a single float argument. */
-   fn @leaky_relu_x(x: f32) -> f32 {
+fn @leaky_relu_x(x: f32) -> f32 {
     let neg_slope = 0.01 as f32;
     if x >= 0.0 {
         x
     } else {
         neg_slope * x
+    }
+}
+
+fn @relu_x(x: f32) -> f32 {
+    if x >= 0.0 {
+        x
+    } else {
+        0.0
     }
 }
 

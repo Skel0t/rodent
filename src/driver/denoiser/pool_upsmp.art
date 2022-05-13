@@ -1,3 +1,8 @@
+fn @make_pool_fn(nn_int: NNInt, kernelsize: i32, pooling_fn: fn(fn(i32) -> f32) -> f32) -> fn(Matrix, Buffer, i64) -> Matrix {
+
+    @|img_mat: Matrix, buf: Buffer, off: i64| nn_int.pool(img_mat, kernelsize, pooling_fn, buf, off)
+}
+
 /* Performs a pooling on the given matrix with receptive field "size x size" and
    stride "size". The pooling_fn is a function that operates on the values in the
    receptive field. The values are given in the order left to right, top to bottom.

@@ -61,8 +61,8 @@ fn @matmul_cpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
     let m_acc = get_mat_acc(mat);
 
     /* Constant variables defining the block size */
-    let c_size = 64;
-    let i_size = 16;
+    let c_size = 128;
+    let i_size = 8;
 
     let c_vec_len = round_down(mat.cols, c_size);
     let i_vec_len = round_down(a.cols, i_size);
@@ -71,12 +71,12 @@ fn @matmul_cpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
     for c in parallel_step(0, c_vec_len, c_size) {
         /* Needs c_size many elements. Even though it is known at compile-time
            AnyDSL doesn't currently support putting c_size here */
-        let mut m : [f32 * 64];
+        let mut m : [f32 * 128];     /* c_size */
 
         /* ii loop for ii = 0 */
         for r in range(0, mat.rows) {
             let b = biases(r);
-            vectorize(64, @|j| {
+            vectorize(c_size, @|j| {
                 m(j) = b;
                 for i in unroll(0, i_size) {
                     m(j) += a_acc.read(r, i, 0) * b_acc.read(i, c + j, 0);
@@ -88,7 +88,7 @@ fn @matmul_cpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
         /* ii loop for ii > 0 and last multiple of i_size < ii */
         for ii in range_step(i_size, i_vec_len, i_size) {
             for r in range(0, mat.rows) {
-                vectorize(64, @|j| {
+                vectorize(c_size, @|j| {
                     m(j) = m_acc.read(r, c + j, 0);
                     for i_loop in unroll(0, i_size) {
                         let i = i_loop + ii;
@@ -113,7 +113,7 @@ fn @matmul_cpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
 
     /* Do the remaining part without vectorization */
     for c in parallel(0, c_vec_len, mat.cols) {
-        let mut m : [f32 * 64];
+        let mut m : [f32 * 128];     /* c_size */
 
         /* ii loop for ii = 0 */
         for r in range(0, mat.rows) {
@@ -164,7 +164,7 @@ fn @matmul_oneapi(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
     c
 }
 
-fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
+fn @matmul_gpu_naive(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
     let acc = cuda_accelerator(0);
 
     let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
@@ -187,6 +187,74 @@ fn @matmul_gpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
             for i in range(0, a.cols) {
                 v = v + a_acc.read(row, i, 0) * b_acc.read(i, col, 0);
             }
+            c_acc.write(row, col, 0, act_fn(v));
+        }
+    }
+    acc.sync();
+
+    c
+}
+
+fn @matmul_gpu_try(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
+    let acc = cuda_accelerator(0);
+
+    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+
+    let a_acc = get_mat_acc(a);
+    let b_acc = get_mat_acc(b);
+    let c_acc = get_mat_acc(c);
+
+    let threads_x = 16;
+    let threads_y = 16;
+    let block = (threads_x, threads_y, 1);
+    let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), 1);
+
+    let num_tiles = a.cols / threads_x;
+
+    for work_item in acc.exec(grid, block) {
+        let tidx = work_item.tidx();
+        let tidy = work_item.tidy();
+
+        let bidx = work_item.bidx();
+        let bidy = work_item.bidy();
+        let bdimx = work_item.bdimx();
+        let bdimy = work_item.bdimy();
+
+        // Row and column in result matrix
+        let row = bidy * bdimy + tidy;
+        let col = bidx * bdimx + tidx;
+
+        if row < c.rows && col < c.cols {
+
+            let shared_size = threads_x * threads_y;
+
+            let a_shared = reserve_shared[f32](shared_size);
+            let b_shared = reserve_shared[f32](shared_size);
+            let mut v = biases(row);
+
+            // Iterate over all tiles
+            for tile_idx in range(0, num_tiles){
+                let tile_row = bidy * bdimy + tidy;
+                let tile_col = tile_idx * bdimx + tidx;
+
+                // Copy tiles from global to shared memory, each thread one value
+                a_shared(tidy * bdimx + tidx) = a_acc.read(bdimy * bidy + tidy, bdimx * bidx + tidx, 0);
+                b_shared(tidx * bdimy + tidy) = b_acc.read(bdimx * bidx + tidx, bdimy * bidy + tidy, 0);
+                // TODO: Change ordering for memory access pattern
+
+                // Wait for tiles to be loaded
+                acc.barrier();
+
+                // Accumulate result for this block
+                for k in range(0, bdimx) {
+                    v += a_shared(tidy * bdimx + k) * b_shared(k * bdimy + tidx);
+                }
+
+                // Wait till all threads in block finished this tile part computation
+                acc.barrier();
+            }
+
+            // Write accumulated result back to matrix
             c_acc.write(row, col, 0, act_fn(v));
         }
     }
