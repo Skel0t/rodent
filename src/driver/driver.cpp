@@ -361,8 +361,6 @@ int main(int argc, char** argv) {
     const anydsl::Device denoising_device = anydsl::Device(0);
     const int32_t dev_plat_mask = anydsl::make_device(denoising_platform, denoising_device);
 
-    std::cout << dev_plat_mask << std::endl;
-
     const int img_s = width * height * 3;
     auto spp = get_spp();
     bool done = false;
