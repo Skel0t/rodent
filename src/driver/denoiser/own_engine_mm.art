@@ -1,0 +1,255 @@
+#[import(cc = "builtin")] fn sqrt(_x: f32) -> f32;
+#[import(cc = "builtin")] fn floor(_x: f32) -> f32;
+
+fn @capsule_inner_loops_init(jj_range: i32, jj: i32, blocking_size_i: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32) {
+
+    for k in range(0, k_end) {  // r -> k
+        let bias = biases(k);
+        let mut acc : [f32 * 128];   // m -> blocking_size_j < 128 !
+
+        for j in range(0, jj_range) {
+            acc(j) = bias;
+            for i_loop in unroll(0, blocking_size_i) {
+                let i = i_loop;
+                acc(j) += a_read(k, i) * b_read(i, jj + j);
+            }
+            m_write(k, jj + j, acc(j));   // Write (not accum) to init the value in the matrix
+        }
+    }
+}
+
+fn @capsule_inner_loops_init_vec(jj_range: i32, jj: i32, blocking_size_i: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32) {
+
+    for k in range(0, k_end) {       // rodent: r -> k
+        let bias = biases(k);
+        let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
+
+        vectorize(jj_range, @|j| {
+            acc(j) = bias;
+            for i_loop in unroll(0, blocking_size_i) {
+                let i = i_loop;
+                acc(j) += a_read(k, i) * b_read(i, jj + j);
+            }
+            m_write(k, jj + j, acc(j));   // Write (not accum) to init the value in the matrix
+        });
+    }
+}
+
+fn @capsule_inner_loops(ii: i32, jj_range: i32, jj: i32, blocking_size_i: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_accum: fn(i32, i32, f32) -> ()) {
+
+    for k in range(0, k_end) {      // rodent: r -> k
+        let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
+
+        for j in range(0, jj_range) {
+            acc(j) = 0;
+            for i_loop in unroll(0, blocking_size_i) {
+                let i = i_loop + ii;
+                acc(j) += a_read(k, i) * b_read(i, jj + j);
+            }
+            m_accum(k, jj + j, acc(j));   // Accumulate in m, no need to explicitly read in this case
+        }
+    }
+}
+
+fn @capsule_inner_loops_vec(ii: i32, jj_range: i32, jj: i32, blocking_size_i: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_accum: fn(i32, i32, f32) -> ()) {
+
+    for k in range(0, k_end) {       // rodent: r -> k
+        let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
+
+        vectorize(jj_range, @|j| {
+            acc(j) = 0;              // Reset accumulator
+            for i_loop in unroll(0, blocking_size_i) {
+                let i = i_loop + ii;
+                acc(j) += a_read(k, i) * b_read(i, jj + j);
+            }
+            m_accum(k, jj + j, acc(j));   // Accumulate in m, no need to explicitly read in this case
+        });
+    }
+}
+
+fn @capsule_inner_loops_fin(ii_end_blocked: i32, i_end: i32, jj_range: i32, jj: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), act_fn: fn(f32) -> f32) {
+
+    for k in range(0, k_end) {       // rodent: r -> k
+        let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
+
+        for j in range(0, jj_range) {
+            acc(j) = m_read(k, jj + j);     // Read since we need the value for applying activation function
+            for i_loop in unroll(ii_end_blocked, i_end) {
+                let i = i_loop;
+                acc(j) += a_read(k, i) * b_read(i, jj + j);
+            }
+            m_write(k, jj + j, act_fn(acc(j)));   // Apply activation function and write back
+        }
+    }
+}
+
+fn @capsule_inner_loops_fin_vec(ii_end_blocked: i32, i_end: i32, jj_range: i32, jj: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), act_fn: fn(f32) -> f32) {
+
+    for k in range(0, k_end) {       // rodent: r -> k
+        let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
+
+        vectorize(jj_range, @|j| {
+            acc(j) = m_read(k, jj + j);     // Read since we need the value for applying activation function
+            for i_loop in unroll(ii_end_blocked, i_end) {
+                let i = i_loop;
+                acc(j) += a_read(k, i) * b_read(i, jj + j);
+            }
+            m_write(k, jj + j, act_fn(acc(j)));   // Apply activation function and write back
+        });
+    }
+}
+
+fn @capsule_outer_loops(jj_start: i32, jj_end: i32, blocking_size_j: i32, k_end: i32, blocking_size_i: i32, ii_end_blocked: i32, i_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), m_accum: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32, act_fn: fn(f32) -> f32) {
+
+    // Vectorization size needs to be known at compile-time.
+    // Thus, split in vectorizable and non-vectorizable part.
+    if (jj_end - jj_start == blocking_size_j) {
+        let jj_range = blocking_size_j;
+
+        capsule_outer_loops_vec(jj_start, jj_range, k_end, blocking_size_i, ii_end_blocked, i_end, a_read, b_read, m_read, m_write, m_accum, biases, act_fn);
+    } else {
+        let jj_range = jj_end - jj_start;
+        capsule_outer_loops_novec(jj_start, jj_range, k_end, blocking_size_i, ii_end_blocked, i_end, a_read, b_read, m_read, m_write, m_accum, biases, act_fn);
+    }
+
+
+}
+
+fn @capsule_outer_loops_vec(jj_start: i32, jj_range: i32, k_end: i32, blocking_size_i: i32, ii_end_blocked: i32, i_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), m_accum: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32, act_fn: fn(f32) -> f32) {
+
+    // Init matrix values to bias for first ii loop
+    // 0 --> blocking_size_i
+    capsule_inner_loops_init_vec(jj_range, jj_start, blocking_size_i, k_end, a_read, b_read, m_write, biases);
+
+    // Start at blocking_size_i because we already did one iteration for initalization
+    // blocking_size_i --> ii_end_blocked
+    for ii in range_step(blocking_size_i, ii_end_blocked, blocking_size_i) {
+        capsule_inner_loops_vec(ii, jj_range, jj_start, blocking_size_i, k_end, a_read, b_read, m_accum);
+    }
+
+    // Finish inner loops by applying activation function
+    // ii_end_blocked --> i_end
+    capsule_inner_loops_fin_vec(ii_end_blocked, i_end, jj_range, jj_start, k_end, a_read, b_read, m_read, m_write, act_fn);
+}
+
+fn @capsule_outer_loops_novec(jj_start: i32, jj_range: i32, k_end: i32, blocking_size_i: i32, ii_end_blocked: i32, i_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), m_accum: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32, act_fn: fn(f32) -> f32) {
+
+    // Init matrix values to bias for first ii loop
+    // 0 --> blocking_size_i
+    capsule_inner_loops_init(jj_range, jj_start, blocking_size_i, k_end, a_read, b_read, m_write, biases);
+
+    // Start at blocking_size_i because we already did one iteration for initalization
+    // blocking_size_i --> ii_end_blocked
+    for ii in range_step(blocking_size_i, ii_end_blocked, blocking_size_i) {
+        capsule_inner_loops(ii, jj_range, jj_start, blocking_size_i, k_end, a_read, b_read, m_accum);
+    }
+
+    // Finish inner loops by applying activation function
+    // ii_end_blocked --> i_end
+    capsule_inner_loops_fin(ii_end_blocked, i_end, jj_range, jj_start, k_end, a_read, b_read, m_read, m_write, act_fn);
+}
+
+fn @calc_blocking_size(jj_loop_max: i32, ii_loop_max: i32, cache_size: i32, word_length: i32, elements_vec_reg: i32) -> (i32, i32) {
+
+    // Could be automatically determined with: word length in Byte * blocking_size_k * blocking_size_j = L1 cache size in Byte
+
+    let max_jj_loop: i32 = 128;
+    let safety_factor: f32 = 0.9;
+
+    let original_blocking_size: i32 = floor(sqrt((cache_size / word_length) as f32)) as i32;
+
+    // blocking_size_j must be smaller or equal 128,
+    let blocking_size_j_aux: i32 = imin(original_blocking_size, max_jj_loop);
+    // then blocking_size_j must be smaller or equal jj_loop_max
+    let mut blocking_size_j: i32 = imin(blocking_size_j_aux, jj_loop_max);
+
+    // blocking_size_j must be a multiple of elements_vec_reg
+    blocking_size_j = (blocking_size_j / elements_vec_reg) * elements_vec_reg;
+
+    // decreased blocking_size_j => increased blocking_size_i
+    let original_blocking_size_i: i32 = cache_size / (word_length * blocking_size_j);
+    let blocking_size_i_aux: i32 = imin(original_blocking_size_i, ii_loop_max);
+
+    // Normally, ii_loop_max >> original_blocking_size_i
+    let mut blocking_size_i: i32 = floor(blocking_size_i_aux as f32 * safety_factor) as i32;
+
+    if (ii_loop_max <= original_blocking_size_i) {
+        blocking_size_i = ii_loop_max;
+    }
+
+    (blocking_size_j, blocking_size_i)
+}
+
+fn @matmul_cpu_par(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) -> Matrix {
+    let mat = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let a_acc = get_mat_acc_e(a);
+    let b_acc = get_mat_acc_e(b);
+    let m_acc = get_mat_acc_e(mat);
+
+    let l1_cache_size: i32 = 32000; // L1 cache size in byte
+    let word_length: i32 = 4; // f32 has a length of 4 byte
+    let elements_vec_reg: i32 = 8; // numbers of f32 fitting into the vector register, AVX, 256 bit -> 8, AVX-512, 512 bit -> 16
+
+    /*************************************
+     *    Variable naming information    *
+     *                                   *
+     *  RODENT | own_engine | other_par  *
+     *    c   -->    j     -->    jj     *
+     *    ii  -->    kk    -->    ii     *
+     *    r   -->    i     -->    k      *
+     *    j   -->    jj    -->    j      *
+     *    i   -->    k     -->    i      *
+     *************************************/
+
+    /***
+     * For correct parallelization it is necessary to parallelize over jj, since
+     * `i` and `j` are used to write values back into the result matrix `mat`.
+     * The matmul in own_engine used a parallel call over `kk` which resulted in
+     * data races between calls to write into the matrix as all threads use the
+     * same i and j ranges in that case. By using a parallel call over `jj` we
+     * can circumvent data races as every thread has its own `j` range.
+     ***/
+
+    // TODO: Thoroughly check for off-by-one error ("a.cols - 1" ?), but seems good so far
+    let last_ii: i32 = a.cols;        // Make sure the activation function is used on every value
+
+    let k_end: i32   = mat.rows;      // For inner non-vectorized loop
+    let j_end: i32   = mat.cols;
+    let i_end: i32   = a.cols;
+
+    let blocksizes: (i32, i32) = calc_blocking_size(j_end, i_end, l1_cache_size, word_length, elements_vec_reg);
+
+    let blocking_size_j: i32 = 128;// blocksizes.0;     // rodent: c_size; < 128, otherwise change acc size above
+    let blocking_size_i: i32 = 8; // blocksizes.1;     // rodent: i_size
+
+    let jj_end_blocked: i32 = (mat.cols / blocking_size_j) * blocking_size_j;   // rodent: c_vec_len
+    let ii_end_blocked: i32 = (last_ii  / blocking_size_i) * blocking_size_i;   // rodent: i_vec_len
+
+    // 0 -> jj_end_blocked
+    for jj in parallel_step(0, jj_end_blocked, blocking_size_j) {
+        let jj_block_end = jj + blocking_size_j;
+
+        capsule_outer_loops(jj, jj_block_end, blocking_size_j, k_end, blocking_size_i, ii_end_blocked, i_end, a_acc.read, b_acc.read, m_acc.read, m_acc.write, m_acc.accumulate, biases, act_fn);
+    }
+
+    // TODO: Could call "_novec" immediately since this should never be vectorizable
+    // jj_end_blocked --> j_end, unvectorized
+    capsule_outer_loops(jj_end_blocked, j_end, blocking_size_j, k_end, blocking_size_i, ii_end_blocked, i_end, a_acc.read, b_acc.read, m_acc.read, m_acc.write, m_acc.accumulate, biases, act_fn);
+
+    mat
+}
+
+
+struct AccMe {
+    read  : fn(i32, i32) -> f32,
+    write : fn(i32, i32, f32) -> (),
+    accumulate : fn(i32, i32, f32) -> ()
+}
+
+fn @get_mat_acc_e(mm: Matrix) -> AccMe {
+    AccMe {
+        read  = @|row, col|           { bitcast[&   [f32]](mm.buf.data)(mm.offset + (row * mm.cols + col) as i64)},
+        write      = @|row, col, val| { bitcast[&mut[f32]](mm.buf.data)(mm.offset + (row * mm.cols + col) as i64) = val; },
+        accumulate = @|row, col, val| { bitcast[&mut[f32]](mm.buf.data)(mm.offset + (row * mm.cols + col) as i64) += val; }
+    }
+}

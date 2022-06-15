@@ -20,7 +20,7 @@ fn @get_cpu_nn() -> NNInt {
 
 fn @get_oneapi_nn() -> NNInt {
     NNInt {
-        matmul     = matmul_oneapi,
+        matmul     = matmul_cpu_par,
         im2col     = im2col_cpu,
         pool       = pool_cpu,
         // nearest    = nearest_cpu,

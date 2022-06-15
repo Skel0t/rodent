@@ -189,7 +189,7 @@ fn @make_denoise_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, 
 
     /* Biases higher-order function to pass to the convolutions. All offsets precalculated. */
     let biases = @|j: i32| {
-        if j < 16 {
+        if j < 17 {
             @|i: i32| { bc_biases(i + sum_up_oc(j)) }
         } else {
             @|_i:i32| { 0 as f32 }  // No bias
@@ -479,7 +479,7 @@ fn @make_oidn_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, hei
 
     /* Biases higher-order function to pass to the convolutions. All offsets precalculated. */
     let biases = @|j: i32| {
-        if j < 16 {
+        if j < 17 {
             @|i: i32| { bc_biases(i + sum_up_oc(j)) }
         } else {
             @|_i:i32| { 0 as f32 }  // No bias
