@@ -98,11 +98,12 @@ add_custom_target(rodent_c_interface ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/int
 if (NOT DISABLE_GUI)
     find_package(SDL2 REQUIRED)
 endif()
+
 find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
-find_package(TBB REQUIRED)
 find_package(LZ4 REQUIRED)
-find_package(LAPACK REQUIRED)
+find_package(dnnl CONFIG REQUIRED)
+find_package(TBB REQUIRED)
 find_package(CUDA REQUIRED)
 
 # To find cublaslt, cmake doesn't find it as easily as cublas
@@ -146,7 +147,8 @@ add_custom_target(convert DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/main.impala)
 set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/main.impala PROPERTIES GENERATED TRUE)
 
 add_library(driver ${DRIVER_SRCS})
-target_include_directories(driver PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${LZ4_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+# TODO: DONT HARDCODE DNNL
+target_include_directories(driver PUBLIC /opt/intel/oneapi/dnnl/latest/cpu_tbb/include ${TBB_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR} ${LZ4_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 add_dependencies(driver rodent_c_interface)
 if (EMBREE_FOUND)
     target_include_directories(driver PUBLIC ${EMBREE_ROOT_DIR}/include ${EMBREE_ROOT_DIR} ${EMBREE_LIBRARY_DIR} ${PNG_INCLUDE_DIRS} ${JPEG_INCLUDE_DIRS} ${TBB_INCLUDE_DIRS} ${LZ4_INCLUDE_DIR})
@@ -165,7 +167,7 @@ endif()
 
 add_executable(rodent ${RODENT_OBJS})
 
-target_link_libraries(rodent driver ${AnyDSL_runtime_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${TBB_LIBRARIES} ${LZ4_LIBRARY} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY} ${_CUBLASLT_LIBRARY})
+target_link_libraries(rodent driver ${AnyDSL_runtime_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${TBB_LIBRARIES} ${LZ4_LIBRARY} DNNL::dnnl ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY} ${_CUBLASLT_LIBRARY})
 
 if (SCENE_FILE STREQUAL "${PROJECT_SOURCE_DIR}/testing/cornell_box.obj")
     # Test rodent when the cornell box is used

@@ -154,9 +154,9 @@ fn @matmul_cpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
 fn @matmul_oneapi(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
     let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     mkl_blas_mm_mult(/*m*/ a.rows, /*n*/ b.cols, /*k*/ a.cols,
-        /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))), /*lda*/ a.cols,
-        /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))), /*ldb*/ b.cols,
-        /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))), /*ldc*/ c.cols);
+        /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))),
+        /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))),
+        /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))));
 
     for acc, v, row, col, chn in iterate_matrix_par(c) {
         acc.write(row, col, chn, act_fn(v + biases(row)));  // 1 channel per row, thus access  row-th bias
@@ -204,12 +204,9 @@ fn @matmul_gpu_try(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32)
     let b_acc = get_mat_acc(b);
     let c_acc = get_mat_acc(c);
 
-    let threads_x = 16;
-    let threads_y = 16;
-    let block = (threads_x, threads_y, 1);
-    let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), 1);
-
-    let num_tiles = a.cols / threads_x;
+    let block_size = 16;
+    let block = (block_size, block_size, 1);
+    let grid  = (round_up(c.cols, block_size), round_up(c.rows, block_size), 1);
 
     for work_item in acc.exec(grid, block) {
         let tidx = work_item.tidx();
@@ -217,44 +214,67 @@ fn @matmul_gpu_try(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32)
 
         let bidx = work_item.bidx();
         let bidy = work_item.bidy();
-        let bdimx = work_item.bdimx();
-        let bdimy = work_item.bdimy();
 
         // Row and column in result matrix
-        let row = bidy * bdimy + tidy;
-        let col = bidx * bdimx + tidx;
+        let row = bidy * work_item.bdimy() + tidy;
+        let col = bidx * work_item.bdimx() + tidx;
 
-        if row < c.rows && col < c.cols {
+        // IMPORTANT:
+        // Cannot interrupt threads that access C[row, col], where [row, col]
+        // is an invalid index, since they still need to load shared data!
 
-            let shared_size = threads_x * threads_y;
+        let shared_size = block_size * block_size;
+        let a_shared = reserve_shared[f32](shared_size);
+        let b_shared = reserve_shared[f32](shared_size);
 
-            let a_shared = reserve_shared[f32](shared_size);
-            let b_shared = reserve_shared[f32](shared_size);
-            let mut v = biases(row);
+        // Accumulator for result, C[row, col] = v in the end
+        let mut v: f32 = biases(row);
 
-            // Iterate over all tiles
-            for tile_idx in range(0, num_tiles){
-                let tile_row = bidy * bdimy + tidy;
-                let tile_col = tile_idx * bdimx + tidx;
+        let a_begin = a.cols * block_size * bidy;   // Topmost row in current block
+        let a_end   = a_begin + a.cols;             // Exclusive end!
+        let a_step  = block_size;                   // Step to next block (blocksize since we iterate a over columns)
 
-                // Copy tiles from global to shared memory, each thread one value
-                a_shared(tidy * bdimx + tidx) = a_acc.read(bdimy * bidy + tidy, bdimx * bidx + tidx, 0);
-                b_shared(tidx * bdimy + tidy) = b_acc.read(bdimx * bidx + tidx, bdimy * bidy + tidy, 0);
-                // TODO: Change ordering for memory access pattern
+        let b_begin = block_size * bidx;    // Leftmost column in current block
+        let b_step  = block_size * b.cols;  // Step to next block (we iterate b over rows)
 
-                // Wait for tiles to be loaded
-                acc.barrier();
+        // Iterate over all tiles
+        for cur_a, cur_b in range_double_step(a_begin, b_begin, a_end, a_step, b_step) {
 
-                // Accumulate result for this block
-                for k in range(0, bdimx) {
-                    v += a_shared(tidy * bdimx + k) * b_shared(k * bdimy + tidx);
-                }
+            // Compute rows and columns for a and b corresponding to current tile
+            let a_col = cur_a - a_begin + tidx;
+            let a_row = block_size * bidy + tidy;
 
-                // Wait till all threads in block finished this tile part computation
-                acc.barrier();
+            let b_col = block_size * bidx + tidy;
+            let b_row = (cur_b - b_begin) / b.cols + tidx;
+
+            // Copy tiles from global to shared memory, each thread one value
+            // Fill invalid values with 0s to invalidate their contribution
+            if ((a_col < a_end && a_row < a.rows)) {
+                a_shared(tidy * block_size + tidx) = a_acc.read(a_row, a_col, 0);
+            } else {
+                a_shared(tidy * block_size + tidx) = 0.0 as f32;
+            }
+            if (b_col < b.cols && b_row < b.rows) {
+                b_shared(tidx * block_size + tidy) = b_acc.read(b_row, b_col, 0);
+            } else {
+                b_shared(tidx * block_size + tidy) = 0.0 as f32;
+            }
+            // TODO: Change ordering for memory access pattern
+
+            // Wait for tiles to be loaded
+            acc.barrier();
+
+            // Accumulate result for this block
+            for k in unroll(0, block_size) {
+                v += a_shared(tidy * block_size + k) * b_shared(k * block_size + tidx);
             }
 
-            // Write accumulated result back to matrix
+            // Wait till all threads in block finished this tile part computation
+            acc.barrier();
+        }
+
+        // Write accumulated result back to matrix if C[row, col] is valid
+        if row < c.rows && col < c.cols{
             c_acc.write(row, col, 0, act_fn(v));
         }
     }

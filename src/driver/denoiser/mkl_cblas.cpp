@@ -1,4 +1,6 @@
-#include <mkl.h>
+#include "oneapi/dnnl/dnnl.hpp"
+
+using namespace dnnl;
 
 extern "C" {
 
@@ -7,11 +9,7 @@ extern "C" {
      * b is k cross n mat
      * c is m cross n mat -> result of a * b
      */
-    void mkl_blas_mm_mult(int32_t m, int32_t n, int32_t k, const float* a, int32_t lda, const float* b, int32_t ldb, float* c, const int32_t ldc) {
-        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                    m, n, k,
-                    1.0f, a, lda,
-                    b, ldb,
-                    0, c, ldc);
+    void mkl_blas_mm_mult(int32_t m, int32_t n, int32_t k, const float* a, const float* b, float* c) {
+        sgemm('n', 'n', m, n, k, 1.0, a, k, b, n, 0.0, c, n);
     }
 }

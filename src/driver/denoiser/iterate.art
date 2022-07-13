@@ -93,7 +93,19 @@ fn @parallel_step(body: fn(i32) -> ()) {
         let iterations = (end - beg) / step;
         for i in parallel(0, 0, iterations) {
             let cur = beg + i * step;
-            @body(cur)
+            @body(cur);
+        }
+    }
+
+    loop
+}
+
+fn @range_double_step(body: fn(i32, i32) -> ()) {
+    fn @loop(start_1: i32, start_2: i32, end_1: i32, step_1: i32, step_2: i32) {
+        let mut it_2 = start_2;
+        for it_1 in range_step(start_1, end_1, step_1) {
+            @body(it_1, it_2);
+            it_2 = it_2 + step_2;
         }
     }
 

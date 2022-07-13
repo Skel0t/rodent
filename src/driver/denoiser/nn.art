@@ -9,295 +9,295 @@ struct NNDEN {
    and trained by Hendrik Junkawitsch as part of his bachelors thesis.
    The network's design is pretty much the same as OIDN, only small changes to
    the number of feature maps were made. */
-fn @make_denoise_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNDEN {
-    /* Kernel size and poolsize is the same for every convolution / pooling layer */
-    let ksize    = 3;
-    let ksize_sq = ksize * ksize;
-    let poolsize = 2;
+// fn @make_denoise_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNDEN {
+//     /* Kernel size and poolsize is the same for every convolution / pooling layer */
+//     let ksize    = 3;
+//     let ksize_sq = ksize * ksize;
+//     let poolsize = 2;
 
-    // ic -> ec1
-    let in_channels_1  = 9;
-    let out_channels_1 = 12;
-    let offset_1 = 0 as i64;
+//     // ic -> ec1
+//     let in_channels_1  = 9;
+//     let out_channels_1 = 12;
+//     let offset_1 = 0 as i64;
 
-    // ec1 -> ec1
-    let in_channels_2  = out_channels_1;
-    let out_channels_2 = 12;    // POOL
-    let offset_2 = offset_1 + (ksize_sq * in_channels_1 * out_channels_1) as i64;
+//     // ec1 -> ec1
+//     let in_channels_2  = out_channels_1;
+//     let out_channels_2 = 12;    // POOL
+//     let offset_2 = offset_1 + (ksize_sq * in_channels_1 * out_channels_1) as i64;
 
-    // ec1 -> ec2
-    let in_channels_3  = out_channels_2;
-    let out_channels_3 = 16;    // POOL
-    let offset_3 = offset_2 + (ksize_sq * in_channels_2 * out_channels_2) as i64;
+//     // ec1 -> ec2
+//     let in_channels_3  = out_channels_2;
+//     let out_channels_3 = 16;    // POOL
+//     let offset_3 = offset_2 + (ksize_sq * in_channels_2 * out_channels_2) as i64;
 
-    // ec2 -> ec3
-    let in_channels_4  = out_channels_3;
-    let out_channels_4 = 32;    // POOL
-    let offset_4 = offset_3 + (ksize_sq * in_channels_3 * out_channels_3) as i64;
+//     // ec2 -> ec3
+//     let in_channels_4  = out_channels_3;
+//     let out_channels_4 = 32;    // POOL
+//     let offset_4 = offset_3 + (ksize_sq * in_channels_3 * out_channels_3) as i64;
 
-    // ec3 -> ec4
-    let in_channels_5  = out_channels_4;
-    let out_channels_5 = 64;    // POOL
-    let offset_5 = offset_4 + (ksize_sq * in_channels_4 * out_channels_4) as i64;
+//     // ec3 -> ec4
+//     let in_channels_5  = out_channels_4;
+//     let out_channels_5 = 64;    // POOL
+//     let offset_5 = offset_4 + (ksize_sq * in_channels_4 * out_channels_4) as i64;
 
-    // ec4 -> ec5
-    let in_channels_6  = out_channels_5;
-    let out_channels_6 = 70;
-    let offset_6 = offset_5 + (ksize_sq * in_channels_5 * out_channels_5) as i64;
+//     // ec4 -> ec5
+//     let in_channels_6  = out_channels_5;
+//     let out_channels_6 = 70;
+//     let offset_6 = offset_5 + (ksize_sq * in_channels_5 * out_channels_5) as i64;
 
-    // ec5 -> ec5
-    let in_channels_7  = out_channels_6;
-    let out_channels_7 = 70;
-    let offset_7 = offset_6 + (ksize_sq * in_channels_6 * out_channels_6) as i64;
+//     // ec5 -> ec5
+//     let in_channels_7  = out_channels_6;
+//     let out_channels_7 = 70;
+//     let offset_7 = offset_6 + (ksize_sq * in_channels_6 * out_channels_6) as i64;
 
-    // ec5+ec3 -> dc4
-    let in_channels_8  = out_channels_7 + out_channels_4;   // CROSS CONNECTION
-    let out_channels_8 = 92;
-    let offset_8 = offset_7 + (ksize_sq * in_channels_7 * out_channels_7) as i64;
+//     // ec5+ec3 -> dc4
+//     let in_channels_8  = out_channels_7 + out_channels_4;   // CROSS CONNECTION
+//     let out_channels_8 = 92;
+//     let offset_8 = offset_7 + (ksize_sq * in_channels_7 * out_channels_7) as i64;
 
-    // dc4 -> dc4
-    let in_channels_9  = out_channels_8;
-    let out_channels_9 = 92;
-    let offset_9= offset_8 + (ksize_sq * in_channels_8 * out_channels_8) as i64;
+//     // dc4 -> dc4
+//     let in_channels_9  = out_channels_8;
+//     let out_channels_9 = 92;
+//     let offset_9= offset_8 + (ksize_sq * in_channels_8 * out_channels_8) as i64;
 
-    // dc4+ec2 -> dc3
-    let in_channels_10  = out_channels_9 + out_channels_3;  // CROSS CONNECTION
-    let out_channels_10 = 70;
-    let offset_10 = offset_9 + (ksize_sq * in_channels_9 * out_channels_9) as i64;
+//     // dc4+ec2 -> dc3
+//     let in_channels_10  = out_channels_9 + out_channels_3;  // CROSS CONNECTION
+//     let out_channels_10 = 70;
+//     let offset_10 = offset_9 + (ksize_sq * in_channels_9 * out_channels_9) as i64;
 
-    // dc3 -> dc3
-    let in_channels_11  = out_channels_10;
-    let out_channels_11 = 70;
-    let offset_11 = offset_10 + (ksize_sq * in_channels_10 * out_channels_10) as i64;
+//     // dc3 -> dc3
+//     let in_channels_11  = out_channels_10;
+//     let out_channels_11 = 70;
+//     let offset_11 = offset_10 + (ksize_sq * in_channels_10 * out_channels_10) as i64;
 
-    // dc3+ec1 -> dc2
-    let in_channels_12  = out_channels_11 + out_channels_2; // CROSS CONNECTION
-    let out_channels_12 = 64;
-    let offset_12 = offset_11 + (ksize_sq * in_channels_11 * out_channels_11) as i64;
+//     // dc3+ec1 -> dc2
+//     let in_channels_12  = out_channels_11 + out_channels_2; // CROSS CONNECTION
+//     let out_channels_12 = 64;
+//     let offset_12 = offset_11 + (ksize_sq * in_channels_11 * out_channels_11) as i64;
 
-    // dc2 -> dc2
-    let in_channels_13  = out_channels_12;
-    let out_channels_13 = 64;
-    let offset_13 = offset_12 + (ksize_sq * in_channels_12 * out_channels_12) as i64;
+//     // dc2 -> dc2
+//     let in_channels_13  = out_channels_12;
+//     let out_channels_13 = 64;
+//     let offset_13 = offset_12 + (ksize_sq * in_channels_12 * out_channels_12) as i64;
 
-    // dc2+ic -> dc1a
-    let in_channels_14  = out_channels_13 + in_channels_1;  // CROSS CONNECTION
-    let out_channels_14 = 32;
-    let offset_14 = offset_13 + (ksize_sq * in_channels_13 * out_channels_13) as i64;
+//     // dc2+ic -> dc1a
+//     let in_channels_14  = out_channels_13 + in_channels_1;  // CROSS CONNECTION
+//     let out_channels_14 = 32;
+//     let offset_14 = offset_13 + (ksize_sq * in_channels_13 * out_channels_13) as i64;
 
-    // dc1a -> dc1b
-    let in_channels_15  = out_channels_14;
-    let out_channels_15 = 16;
-    let offset_15 = offset_14 + (ksize_sq * in_channels_14 * out_channels_14) as i64;
+//     // dc1a -> dc1b
+//     let in_channels_15  = out_channels_14;
+//     let out_channels_15 = 16;
+//     let offset_15 = offset_14 + (ksize_sq * in_channels_14 * out_channels_14) as i64;
 
-    // dc1b -> oc
-    let in_channels_16  = out_channels_15;
-    let out_channels_16 = 3;
-    let offset_16 = offset_15 + (ksize_sq * in_channels_15 * out_channels_15) as i64;
+//     // dc1b -> oc
+//     let in_channels_16  = out_channels_15;
+//     let out_channels_16 = 3;
+//     let offset_16 = offset_15 + (ksize_sq * in_channels_15 * out_channels_15) as i64;
 
-    let bc_biases = bitcast[&[f32]](biases.data);
+//     let bc_biases = bitcast[&[f32]](biases.data);
 
-    let in_channels = @|i: i32| {
-        match i {
-            1  => in_channels_1,
-            2  => in_channels_2,
-            3  => in_channels_3,
-            4  => in_channels_4,
-            5  => in_channels_5,
-            6  => in_channels_6,
-            7  => in_channels_7,
-            8  => in_channels_8,
-            9  => in_channels_9,
-            10 => in_channels_10,
-            11 => in_channels_11,
-            12 => in_channels_12,
-            13 => in_channels_13,
-            14 => in_channels_14,
-            15 => in_channels_15,
-            16 => in_channels_16,
-            _  => 0
-        }
-    };
+//     let in_channels = @|i: i32| {
+//         match i {
+//             1  => in_channels_1,
+//             2  => in_channels_2,
+//             3  => in_channels_3,
+//             4  => in_channels_4,
+//             5  => in_channels_5,
+//             6  => in_channels_6,
+//             7  => in_channels_7,
+//             8  => in_channels_8,
+//             9  => in_channels_9,
+//             10 => in_channels_10,
+//             11 => in_channels_11,
+//             12 => in_channels_12,
+//             13 => in_channels_13,
+//             14 => in_channels_14,
+//             15 => in_channels_15,
+//             16 => in_channels_16,
+//             _  => 0
+//         }
+//     };
 
-    let offsets = @|i: i32| {
-        match i {
-            1  => offset_1,
-            2  => offset_2,
-            3  => offset_3,
-            4  => offset_4,
-            5  => offset_5,
-            6  => offset_6,
-            7  => offset_7,
-            8  => offset_8,
-            9  => offset_9,
-            10 => offset_10,
-            11 => offset_11,
-            12 => offset_12,
-            13 => offset_13,
-            14 => offset_14,
-            15 => offset_15,
-            16 => offset_16,
-            _  => 0
-        }
-    };
+//     let offsets = @|i: i32| {
+//         match i {
+//             1  => offset_1,
+//             2  => offset_2,
+//             3  => offset_3,
+//             4  => offset_4,
+//             5  => offset_5,
+//             6  => offset_6,
+//             7  => offset_7,
+//             8  => offset_8,
+//             9  => offset_9,
+//             10 => offset_10,
+//             11 => offset_11,
+//             12 => offset_12,
+//             13 => offset_13,
+//             14 => offset_14,
+//             15 => offset_15,
+//             16 => offset_16,
+//             _  => 0
+//         }
+//     };
 
-    let out_channels = @|i: i32| {
-        match i {
-            1  => out_channels_1,
-            2  => out_channels_2,
-            3  => out_channels_3,
-            4  => out_channels_4,
-            5  => out_channels_5,
-            6  => out_channels_6,
-            7  => out_channels_7,
-            8  => out_channels_8,
-            9  => out_channels_9,
-            10 => out_channels_10,
-            11 => out_channels_11,
-            12 => out_channels_12,
-            13 => out_channels_13,
-            14 => out_channels_14,
-            15 => out_channels_15,
-            16 => out_channels_16,
-            _  => 0
-        }
-    };
+//     let out_channels = @|i: i32| {
+//         match i {
+//             1  => out_channels_1,
+//             2  => out_channels_2,
+//             3  => out_channels_3,
+//             4  => out_channels_4,
+//             5  => out_channels_5,
+//             6  => out_channels_6,
+//             7  => out_channels_7,
+//             8  => out_channels_8,
+//             9  => out_channels_9,
+//             10 => out_channels_10,
+//             11 => out_channels_11,
+//             12 => out_channels_12,
+//             13 => out_channels_13,
+//             14 => out_channels_14,
+//             15 => out_channels_15,
+//             16 => out_channels_16,
+//             _  => 0
+//         }
+//     };
 
-    let kernelsizes = @|_: i32| {
-        ksize
-    };
+//     let kernelsizes = @|_: i32| {
+//         ksize
+//     };
 
-    let activations = @|i: i32| {
-        match i {
-            16 => id,
-            _  => leaky_relu_x
-        }
-    };
+//     let activations = @|i: i32| {
+//         match i {
+//             16 => id,
+//             _  => leaky_relu_x
+//         }
+//     };
 
-    /* Kernel matrices higher-order function to pass to the convolutions. */
-    let flattened_kernels = @|i: i32| {
-        make_matrix(kernels, offsets(i), MemoryFormat::CHW, 1, out_channels(i), ksize_sq * in_channels(i))
-    };
+//     /* Kernel matrices higher-order function to pass to the convolutions. */
+//     let flattened_kernels = @|i: i32| {
+//         make_matrix(kernels, offsets(i), MemoryFormat::CHW, 1, out_channels(i), ksize_sq * in_channels(i))
+//     };
 
-    let sum_up_oc = @|n: i32| {
-        let mut res = 0;
-        for i in unroll(1, n) {
-            res += out_channels(i);
-        }
-        res
-    };
+//     let sum_up_oc = @|n: i32| {
+//         let mut res = 0;
+//         for i in unroll(1, n) {
+//             res += out_channels(i);
+//         }
+//         res
+//     };
 
-    /* Biases higher-order function to pass to the convolutions. All offsets precalculated. */
-    let biases = @|j: i32| {
-        if j < 17 {
-            @|i: i32| { bc_biases(i + sum_up_oc(j)) }
-        } else {
-            @|_i:i32| { 0 as f32 }  // No bias
-        }
-    };
+//     /* Biases higher-order function to pass to the convolutions. All offsets precalculated. */
+//     let biases = @|j: i32| {
+//         if j < 17 {
+//             @|i: i32| { bc_biases(i + sum_up_oc(j)) }
+//         } else {
+//             @|_i:i32| { 0 as f32 }  // No bias
+//         }
+//     };
 
-    /* Calculate necessary memory */
-    let size_im2col = (width as i64) * (height as i64) * (ksize_sq as i64) * (73 /* max(<in channels>/<shrinked_size>) */ as i64);  /* max size for im2col matrix */
-    let size_img    = (width as i64) * (height as i64) * (32 /* max(<out channels>/<shrinked_size>) */ as i64);                      /* max size to save matmul output */
-    /* Sizes to save cross-connections: */
-    let size_pool_3 = (width as i64) * (height as i64) * (out_channels_4 as i64) / (4 * 4 * 4);
-    let size_pool_2 = (width as i64) * (height as i64) * (out_channels_3 as i64) / (4 * 4);
-    let size_pool_1 = (width as i64) * (height as i64) * (out_channels_2 as i64) / (4);
+//     /* Calculate necessary memory */
+//     let size_im2col = (width as i64) * (height as i64) * (ksize_sq as i64) * (73 /* max(<in channels>/<shrinked_size>) */ as i64);  /* max size for im2col matrix */
+//     let size_img    = (width as i64) * (height as i64) * (32 /* max(<out channels>/<shrinked_size>) */ as i64);                      /* max size to save matmul output */
+//     /* Sizes to save cross-connections: */
+//     let size_pool_3 = (width as i64) * (height as i64) * (out_channels_4 as i64) / (4 * 4 * 4);
+//     let size_pool_2 = (width as i64) * (height as i64) * (out_channels_3 as i64) / (4 * 4);
+//     let size_pool_1 = (width as i64) * (height as i64) * (out_channels_2 as i64) / (4);
 
-    /* Alltogether, multiplied by 4, since we are using 32bit floats. */
-    let necess_mem = 4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3);
+//     /* Alltogether, multiplied by 4, since we are using 32bit floats. */
+//     let necess_mem = 4 * (size_im2col + size_img + size_pool_1 + size_pool_2 + size_pool_3);
 
-    let pool_fn = make_pool_fn(nn_int, poolsize, max_4);
-    let conv_fn = make_conv2d_fn(nn_int, kernelsizes, in_channels, out_channels, flattened_kernels, biases, activations);
-    let conv_acc_fn = make_conv2d_acc_fn(nn_int, kernelsizes, in_channels, out_channels, flattened_kernels, biases, activations);
+//     let pool_fn = make_pool_fn(nn_int, poolsize, max_4);
+//     let conv_fn = make_conv2d_fn(nn_int, kernelsizes, in_channels, out_channels, flattened_kernels, biases, activations);
+//     let conv_acc_fn = make_conv2d_acc_fn(nn_int, kernelsizes, in_channels, out_channels, flattened_kernels, biases, activations);
 
-    fn @forward_denoise(img: Buffer, albedo: Buffer, normal: Buffer, mem: Buffer, out_buf: Buffer) -> () {
-        cpu_profile(&mut total_counter, || {
-            let mut img_mat = make_matrix(img, 0, MemoryFormat::HWC, 3, height, width);
-            let alb_mat  = make_matrix(albedo, 0, MemoryFormat::HWC, 3, height, width);
-            let nrm_mat  = make_matrix(normal, 0, MemoryFormat::HWC, 3, height, width);
+//     fn @forward_denoise(img: Buffer, albedo: Buffer, normal: Buffer, mem: Buffer, out_buf: Buffer) -> () {
+//         cpu_profile(&mut total_counter, || {
+//             let mut img_mat = make_matrix(img, 0, MemoryFormat::HWC, 3, height, width);
+//             let alb_mat  = make_matrix(albedo, 0, MemoryFormat::HWC, 3, height, width);
+//             let nrm_mat  = make_matrix(normal, 0, MemoryFormat::HWC, 3, height, width);
 
-            let img_acc = get_mat_acc(img_mat);
-            let alb_acc = get_mat_acc(alb_mat);
-            let nrm_acc = get_mat_acc(nrm_mat);
+//             let img_acc = get_mat_acc(img_mat);
+//             let alb_acc = get_mat_acc(alb_mat);
+//             let nrm_acc = get_mat_acc(nrm_mat);
 
-            let input_acc = get_cat_mat_acc(get_cat_mat_acc(img_acc, alb_acc, img_mat.channels), nrm_acc, img_mat.channels + alb_mat.channels);
+//             let input_acc = get_cat_mat_acc(get_cat_mat_acc(img_acc, alb_acc, img_mat.channels), nrm_acc, img_mat.channels + alb_mat.channels);
 
-            // Convolution 1
-            img_mat = conv_acc_fn(input_acc, img_mat.rows, img_mat.cols, 1, mem, 0, size_im2col);
+//             // Convolution 1
+//             img_mat = conv_acc_fn(input_acc, img_mat.rows, img_mat.cols, 1, mem, 0, size_im2col);
 
-            // Convolution 2
-            img_mat = conv_fn(img_mat, 2, mem, 0, size_im2col);
-            img_mat = pool_fn(img_mat, mem, size_im2col + size_img);    // POOL 1
+//             // Convolution 2
+//             img_mat = conv_fn(img_mat, 2, mem, 0, size_im2col);
+//             img_mat = pool_fn(img_mat, mem, size_im2col + size_img);    // POOL 1
 
-            let pool_1 = get_mat_acc(img_mat);
+//             let pool_1 = get_mat_acc(img_mat);
 
-            // Convolution 3
-            img_mat = conv_fn(img_mat, 3, mem, 0, size_im2col);
-            img_mat = pool_fn(img_mat, mem, size_im2col + size_img + size_pool_1);    // POOL 2
+//             // Convolution 3
+//             img_mat = conv_fn(img_mat, 3, mem, 0, size_im2col);
+//             img_mat = pool_fn(img_mat, mem, size_im2col + size_img + size_pool_1);    // POOL 2
 
-            let pool_2 = get_mat_acc(img_mat);
+//             let pool_2 = get_mat_acc(img_mat);
 
-            // Convolution 4
-            img_mat = conv_fn(img_mat, 4, mem, 0, size_im2col);
-            img_mat = pool_fn(img_mat, mem, size_im2col + size_img + size_pool_1 + size_pool_2);    // POOL 3
+//             // Convolution 4
+//             img_mat = conv_fn(img_mat, 4, mem, 0, size_im2col);
+//             img_mat = pool_fn(img_mat, mem, size_im2col + size_img + size_pool_1 + size_pool_2);    // POOL 3
 
-            let pool_3 = get_mat_acc(img_mat);
+//             let pool_3 = get_mat_acc(img_mat);
 
-            // Convolution 5
-            img_mat = conv_fn(img_mat, 5, mem, 0, size_im2col);
-            img_mat = pool_fn(img_mat, mem, 0);
-                // This pooling swaps memory locations of im2col matrix and img_mat. Allows parallel execution.
-                // Could not be done in parallel if it was done in place
+//             // Convolution 5
+//             img_mat = conv_fn(img_mat, 5, mem, 0, size_im2col);
+//             img_mat = pool_fn(img_mat, mem, 0);
+//                 // This pooling swaps memory locations of im2col matrix and img_mat. Allows parallel execution.
+//                 // Could not be done in parallel if it was done in place
 
-            // Convolution 6
-            img_mat = conv_fn(img_mat, 6, mem, size_img, 0);
+//             // Convolution 6
+//             img_mat = conv_fn(img_mat, 6, mem, size_img, 0);
 
-            // Convolution 7
-            img_mat = conv_fn(img_mat, 7, mem, size_img, 0);
+//             // Convolution 7
+//             img_mat = conv_fn(img_mat, 7, mem, size_img, 0);
 
-            // Convolution 8
-            let mat_acc_1 = nearest_acc(img_mat);
-            let cat_acc_1 = get_cat_mat_acc(mat_acc_1, pool_3, img_mat.channels);
-            img_mat = conv_acc_fn(cat_acc_1, 2 * img_mat.rows, 2 * img_mat.cols, 8, mem, size_img, 0);
+//             // Convolution 8
+//             let mat_acc_1 = nearest_acc(img_mat);
+//             let cat_acc_1 = get_cat_mat_acc(mat_acc_1, pool_3, img_mat.channels);
+//             img_mat = conv_acc_fn(cat_acc_1, 2 * img_mat.rows, 2 * img_mat.cols, 8, mem, size_img, 0);
 
-            // Convolution 9
-            img_mat = conv_fn(img_mat, 9, mem, size_img, 0);
+//             // Convolution 9
+//             img_mat = conv_fn(img_mat, 9, mem, size_img, 0);
 
-            // Convolution 10
-            let mat_acc_2 = nearest_acc(img_mat);
-            let cat_acc_2 = get_cat_mat_acc(mat_acc_2, pool_2, img_mat.channels);
-            img_mat = conv_acc_fn(cat_acc_2, 2 * img_mat.rows, 2 * img_mat.cols, 10, mem, size_img, 0);
+//             // Convolution 10
+//             let mat_acc_2 = nearest_acc(img_mat);
+//             let cat_acc_2 = get_cat_mat_acc(mat_acc_2, pool_2, img_mat.channels);
+//             img_mat = conv_acc_fn(cat_acc_2, 2 * img_mat.rows, 2 * img_mat.cols, 10, mem, size_img, 0);
 
-            // Convolution 11
-            img_mat = conv_fn(img_mat, 11, mem, size_img, 0);
+//             // Convolution 11
+//             img_mat = conv_fn(img_mat, 11, mem, size_img, 0);
 
-            // Convolution 12
-            let mat_acc_3 = nearest_acc(img_mat);
-            let cat_acc_3 = get_cat_mat_acc(mat_acc_3, pool_1, img_mat.channels);
-            img_mat = conv_acc_fn(cat_acc_3, 2 * img_mat.rows, 2 * img_mat.cols, 12, mem, size_img, 0);
+//             // Convolution 12
+//             let mat_acc_3 = nearest_acc(img_mat);
+//             let cat_acc_3 = get_cat_mat_acc(mat_acc_3, pool_1, img_mat.channels);
+//             img_mat = conv_acc_fn(cat_acc_3, 2 * img_mat.rows, 2 * img_mat.cols, 12, mem, size_img, 0);
 
-            // Convolution 13
-            img_mat = conv_fn(img_mat, 13, mem, size_img, 0);
+//             // Convolution 13
+//             img_mat = conv_fn(img_mat, 13, mem, size_img, 0);
 
-            // Convolution 14
-            let mat_acc_4 = nearest_acc(img_mat);
-            let cat_acc_4 = get_cat_mat_acc(mat_acc_4, input_acc, img_mat.channels);
-            img_mat = conv_acc_fn(cat_acc_4, 2 * img_mat.rows, 2 * img_mat.cols, 14, mem, size_img, 0);
+//             // Convolution 14
+//             let mat_acc_4 = nearest_acc(img_mat);
+//             let cat_acc_4 = get_cat_mat_acc(mat_acc_4, input_acc, img_mat.channels);
+//             img_mat = conv_acc_fn(cat_acc_4, 2 * img_mat.rows, 2 * img_mat.cols, 14, mem, size_img, 0);
 
-            // Convolution 15
-            img_mat = conv_fn(img_mat, 15, mem, size_img, 0);
+//             // Convolution 15
+//             img_mat = conv_fn(img_mat, 15, mem, size_img, 0);
 
-            // Convolution 16
-            img_mat = conv_fn(img_mat, 16, mem, size_img, 0);
+//             // Convolution 16
+//             img_mat = conv_fn(img_mat, 16, mem, size_img, 0);
 
-            // Write result in output buffer (necessary since rodent expects hwc while conv2d returns chw format)
-            nn_int.chw_to_hwc(img_mat, out_buf, 0);
-        });
-    }
+//             // Write result in output buffer (necessary since rodent expects hwc while conv2d returns chw format)
+//             nn_int.chw_to_hwc(img_mat, out_buf, 0);
+//         });
+//     }
 
-    NNDEN { forward = forward_denoise, necess_mem = necess_mem }
-}
+//     NNDEN { forward = forward_denoise, necess_mem = necess_mem }
+// }
 
 fn @make_oidn_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNDEN {
     /* Kernel size and poolsize is the same for every convolution / pooling layer */

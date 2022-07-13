@@ -1,4 +1,4 @@
-#[import(cc = "C")] fn mkl_blas_mm_mult(_m: i32, _n: i32, _k: i32, _a: &[f32], _lda: i32, _b: &[f32], _ldb: i32, _c: &mut[f32], _ldc: i32) -> ();
+#[import(cc = "C")] fn mkl_blas_mm_mult(_m: i32, _n: i32, _k: i32, _a: &[f32], _b: &[f32],_c: &mut[f32]) -> ();
 #[import(cc = "C")] fn cublas_S_gemm(_d_A: &[f32], _d_B: &[f32], _d_C: &[f32], _a_width: i32, _a_height: i32, _b_width: i32, _device: i32) -> ();
 #[import(cc = "C")] fn cublaslt_S_gemm(_d_A: &[f32], _d_B: &[f32], _d_C: &[f32], _a_width: i32, _a_height: i32, _b_width: i32, _device: i32) -> ();
 
@@ -38,8 +38,8 @@ fn @get_necessary_mem_oidn(width: i32, height: i32) -> i64 {
 fn @fw(nn_int: NNInt, img_buf: &Buffer, alb_buf: &Buffer, nrm_buf: &Buffer, mem: &Buffer,
     width: i32, height: i32, out_buf: &Buffer, kernels: &Buffer, biases: &Buffer, network: i32) -> () {
     if (network == 0){
-        let nn = make_denoise_nn(nn_int, *kernels, *biases, width, height);
-        nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
+        // let nn = make_denoise_nn(nn_int, *kernels, *biases, width, height);
+        // nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);
     } else {
         let nn = make_oidn_nn(nn_int, *kernels, *biases, width, height);
         nn.forward(*img_buf, *alb_buf, *nrm_buf, *mem, *out_buf);

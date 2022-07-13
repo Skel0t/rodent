@@ -1,44 +1,33 @@
 #[import(cc = "builtin")] fn sqrt(_x: f32) -> f32;
 #[import(cc = "builtin")] fn floor(_x: f32) -> f32;
 
-fn @capsule_inner_loops_init(jj_range: i32, jj: i32, blocking_size_i: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32) {
+fn @capsule_inner_loops_init(ii: i32, jj_range: i32, jj: i32, blocking_size_i: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32) {
 
-    for k in range(0, k_end) {  // r -> k
+    /*
+     * k - row index of the output matrix m, k_end - m.rows
+     * j - col index of the output matrix m, jj_range - vec_length
+     * i - col index of a, i_loop - blocking index
+     */
+
+    for k in range(0, k_end) {      // rodent: r -> k
+        let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j <= 128 !
         let bias = biases(k);
-        let mut acc : [f32 * 128];   // m -> blocking_size_j < 128 !
 
         for j in range(0, jj_range) {
             acc(j) = bias;
             for i_loop in unroll(0, blocking_size_i) {
-                let i = i_loop;
+                let i = i_loop + ii;
                 acc(j) += a_read(k, i) * b_read(i, jj + j);
             }
-            m_write(k, jj + j, acc(j));   // Write (not accum) to init the value in the matrix
+            m_write(k, jj + j, acc(j));   // Accumulate in m, no need to explicitly read in this case
         }
     }
 }
 
-fn @capsule_inner_loops_init_vec(jj_range: i32, jj: i32, blocking_size_i: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32) {
-
-    for k in range(0, k_end) {       // rodent: r -> k
-        let bias = biases(k);
-        let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
-
-        vectorize(jj_range, @|j| {
-            acc(j) = bias;
-            for i_loop in unroll(0, blocking_size_i) {
-                let i = i_loop;
-                acc(j) += a_read(k, i) * b_read(i, jj + j);
-            }
-            m_write(k, jj + j, acc(j));   // Write (not accum) to init the value in the matrix
-        });
-    }
-}
-
-fn @capsule_inner_loops(ii: i32, jj_range: i32, jj: i32, blocking_size_i: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_accum: fn(i32, i32, f32) -> ()) {
+fn @capsule_inner_loops(ii: i32, jj_range: i32, jj: i32, blocking_size_i: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_accum: fn(i32, i32, f32) -> ()) -> () {
 
     for k in range(0, k_end) {      // rodent: r -> k
-        let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
+        let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j <= 128 !
 
         for j in range(0, jj_range) {
             acc(j) = 0;
@@ -51,23 +40,61 @@ fn @capsule_inner_loops(ii: i32, jj_range: i32, jj: i32, blocking_size_i: i32, k
     }
 }
 
-fn @capsule_inner_loops_vec(ii: i32, jj_range: i32, jj: i32, blocking_size_i: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_accum: fn(i32, i32, f32) -> ()) {
+fn @capsule_inner_loops_init_vec(ii: i32, jj: i32, blocking_size_i: i32, k_end: i32, vec_width: i32, vec_id_max: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32) -> () {
+
+    for k in range(0, k_end) {       // rodent: r -> k
+        let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
+        let bias = biases(k);
+
+        // jj_range = vec_width * vec_id
+        // instead of jj_range we use here vec_width and vec_id
+
+        for vec_id in range(0, vec_id_max) {
+
+            let j_coarse: i32 = vec_width * vec_id;
+
+            vectorize(vec_width, @|j_fine| {
+                let j: i32 = j_coarse + j_fine;
+                acc(j) = bias; // Reset accumulator
+
+                for i_loop in unroll(0, blocking_size_i) {
+                    let i = i_loop + ii;
+                    acc(j) += a_read(k, i) * b_read(i, jj + j);
+                }
+                m_write(k, jj + j, acc(j));   // Accumulate in m, no need to explicitly read in this case
+            });
+        }
+    }
+}
+
+fn @capsule_inner_loops_vec(ii: i32, jj: i32, blocking_size_i: i32, k_end: i32, vec_width: i32, vec_id_max: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_accum: fn(i32, i32, f32) -> ()) -> () {
 
     for k in range(0, k_end) {       // rodent: r -> k
         let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
 
-        vectorize(jj_range, @|j| {
-            acc(j) = 0;              // Reset accumulator
-            for i_loop in unroll(0, blocking_size_i) {
-                let i = i_loop + ii;
-                acc(j) += a_read(k, i) * b_read(i, jj + j);
-            }
-            m_accum(k, jj + j, acc(j));   // Accumulate in m, no need to explicitly read in this case
-        });
+        // jj_range = vec_width * vec_id
+        // instead of jj_range we use here vec_width and vec_id
+
+        for vec_id in range(0, vec_id_max) {
+
+            let j_coarse: i32 = vec_width * vec_id;
+
+            vectorize(vec_width, @|j_fine| {
+                let j: i32 = j_coarse + j_fine;
+                acc(j) = 0; // Reset accumulator
+
+                for i_loop in unroll(0, blocking_size_i) {
+                    let i = i_loop + ii;
+                    acc(j) += a_read(k, i) * b_read(i, jj + j);
+                }
+                m_accum(k, jj + j, acc(j));   // Accumulate in m, no need to explicitly read in this case
+            });
+        }
     }
 }
 
-fn @capsule_inner_loops_fin(ii_end_blocked: i32, i_end: i32, jj_range: i32, jj: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), act_fn: fn(f32) -> f32) {
+fn @capsule_inner_loops_ops(ii_end_blocked: i32, i_end: i32, jj_range: i32, jj: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32,
+m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), act_fn: fn(f32) -> f32) -> () {
 
     for k in range(0, k_end) {       // rodent: r -> k
         let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
@@ -83,71 +110,62 @@ fn @capsule_inner_loops_fin(ii_end_blocked: i32, i_end: i32, jj_range: i32, jj: 
     }
 }
 
-fn @capsule_inner_loops_fin_vec(ii_end_blocked: i32, i_end: i32, jj_range: i32, jj: i32, k_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), act_fn: fn(f32) -> f32) {
+fn @capsule_inner_loops_ops_vec(ii_end_blocked: i32, i_end: i32, jj: i32, k_end: i32, vec_width: i32, vec_id_max: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32,
+m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), act_fn: fn(f32) -> f32) -> () {
 
     for k in range(0, k_end) {       // rodent: r -> k
         let mut acc : [f32 * 128];   // rodent: m -> blocking_size_j < 128 !
 
-        vectorize(jj_range, @|j| {
-            acc(j) = m_read(k, jj + j);     // Read since we need the value for applying activation function
-            for i_loop in unroll(ii_end_blocked, i_end) {
-                let i = i_loop;
-                acc(j) += a_read(k, i) * b_read(i, jj + j);
-            }
-            m_write(k, jj + j, act_fn(acc(j)));   // Apply activation function and write back
-        });
+        for vec_id in range(0, vec_id_max) {
+
+            let j_coarse: i32 = vec_width * vec_id;
+
+            vectorize(vec_width, @|j_fine| {
+
+                let j: i32 = j_coarse + j_fine;
+                acc(j) = m_read(k, jj + j); // Read since we need the value for applying activation function
+                for i_loop in unroll(ii_end_blocked, i_end) {
+                    let i = i_loop;
+                    acc(j) += a_read(k, i) * b_read(i, jj + j);
+                }
+                m_write(k, jj + j, act_fn(acc(j)));   // Apply activation function and write back
+            });
+        }
     }
 }
 
-fn @capsule_outer_loops(jj_start: i32, jj_end: i32, blocking_size_j: i32, k_end: i32, blocking_size_i: i32, ii_end_blocked: i32, i_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), m_accum: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32, act_fn: fn(f32) -> f32) {
 
-    // Vectorization size needs to be known at compile-time.
-    // Thus, split in vectorizable and non-vectorizable part.
-    if (jj_end - jj_start == blocking_size_j) {
-        let jj_range = blocking_size_j;
+fn @capsule_outer_loops_vec(jj_start: i32, k_end: i32, blocking_size_i: i32, ii_end_blocked: i32, i_end: i32, vec_width: i32, vec_id_max: i32,
+a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), m_accum: fn(i32, i32, f32) -> (),
+biases: fn(i32) -> f32, act_fn: fn(f32) -> f32) -> () {
 
-        capsule_outer_loops_vec(jj_start, jj_range, k_end, blocking_size_i, ii_end_blocked, i_end, a_read, b_read, m_read, m_write, m_accum, biases, act_fn);
-    } else {
-        let jj_range = jj_end - jj_start;
-        capsule_outer_loops_novec(jj_start, jj_range, k_end, blocking_size_i, ii_end_blocked, i_end, a_read, b_read, m_read, m_write, m_accum, biases, act_fn);
-    }
+    capsule_inner_loops_init_vec(0, jj_start, blocking_size_i, k_end, vec_width, vec_id_max, a_read, b_read, m_write, biases);
 
-
-}
-
-fn @capsule_outer_loops_vec(jj_start: i32, jj_range: i32, k_end: i32, blocking_size_i: i32, ii_end_blocked: i32, i_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), m_accum: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32, act_fn: fn(f32) -> f32) {
-
-    // Init matrix values to bias for first ii loop
-    // 0 --> blocking_size_i
-    capsule_inner_loops_init_vec(jj_range, jj_start, blocking_size_i, k_end, a_read, b_read, m_write, biases);
-
-    // Start at blocking_size_i because we already did one iteration for initalization
-    // blocking_size_i --> ii_end_blocked
     for ii in range_step(blocking_size_i, ii_end_blocked, blocking_size_i) {
-        capsule_inner_loops_vec(ii, jj_range, jj_start, blocking_size_i, k_end, a_read, b_read, m_accum);
+        capsule_inner_loops_vec(ii, jj_start, blocking_size_i, k_end, vec_width, vec_id_max, a_read, b_read, m_accum);
     }
 
-    // Finish inner loops by applying activation function
+
+    // Finish inner loops by applying activation function & bias
     // ii_end_blocked --> i_end
-    capsule_inner_loops_fin_vec(ii_end_blocked, i_end, jj_range, jj_start, k_end, a_read, b_read, m_read, m_write, act_fn);
+    capsule_inner_loops_ops_vec(ii_end_blocked, i_end, jj_start, k_end, vec_width, vec_id_max, a_read, b_read, m_read, m_write, act_fn);
 }
 
-fn @capsule_outer_loops_novec(jj_start: i32, jj_range: i32, k_end: i32, blocking_size_i: i32, ii_end_blocked: i32, i_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32, m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), m_accum: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32, act_fn: fn(f32) -> f32) {
 
-    // Init matrix values to bias for first ii loop
-    // 0 --> blocking_size_i
-    capsule_inner_loops_init(jj_range, jj_start, blocking_size_i, k_end, a_read, b_read, m_write, biases);
+fn @capsule_outer_loops_novec(jj_start: i32, jj_range_rest: i32, k_end: i32, blocking_size_i: i32, ii_end_blocked: i32, i_end: i32, a_read: fn(i32, i32) -> f32, b_read: fn(i32, i32) -> f32,
+m_read: fn(i32, i32) -> f32, m_write: fn(i32, i32, f32) -> (), m_accum: fn(i32, i32, f32) -> (), biases: fn(i32) -> f32, act_fn: fn(f32) -> f32) -> () {
 
-    // Start at blocking_size_i because we already did one iteration for initalization
-    // blocking_size_i --> ii_end_blocked
-    for ii in range_step(blocking_size_i, ii_end_blocked, blocking_size_i) {
-        capsule_inner_loops(ii, jj_range, jj_start, blocking_size_i, k_end, a_read, b_read, m_accum);
+    capsule_inner_loops_init(0, jj_range_rest, jj_start, blocking_size_i, k_end, a_read, b_read, m_write, biases);
+
+    for ii in range_step(0, ii_end_blocked, blocking_size_i) {
+        capsule_inner_loops(ii, jj_range_rest, jj_start, blocking_size_i, k_end, a_read, b_read, m_accum);
     }
 
-    // Finish inner loops by applying activation function
+    // Finish inner loops by applying activation function & bias
     // ii_end_blocked --> i_end
-    capsule_inner_loops_fin(ii_end_blocked, i_end, jj_range, jj_start, k_end, a_read, b_read, m_read, m_write, act_fn);
+    capsule_inner_loops_ops(ii_end_blocked, i_end, jj_range_rest, jj_start, k_end, a_read, b_read, m_read, m_write, act_fn);
 }
+
 
 fn @calc_blocking_size(jj_loop_max: i32, ii_loop_max: i32, cache_size: i32, word_length: i32, elements_vec_reg: i32) -> (i32, i32) {
 
@@ -188,7 +206,7 @@ fn @matmul_cpu_par(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32)
 
     let l1_cache_size: i32 = 32000; // L1 cache size in byte
     let word_length: i32 = 4; // f32 has a length of 4 byte
-    let elements_vec_reg: i32 = 8; // numbers of f32 fitting into the vector register, AVX, 256 bit -> 8, AVX-512, 512 bit -> 16
+    let elems_vec_reg: i32 = 8; // numbers of f32 fitting into the vector register, AVX, 256 bit -> 8, AVX-512, 512 bit -> 16
 
     /*************************************
      *    Variable naming information    *
@@ -217,24 +235,34 @@ fn @matmul_cpu_par(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32)
     let j_end: i32   = mat.cols;
     let i_end: i32   = a.cols;
 
-    let blocksizes: (i32, i32) = calc_blocking_size(j_end, i_end, l1_cache_size, word_length, elements_vec_reg);
+    // let blocksizes: (i32, i32) = calc_blocking_size(j_end, i_end, l1_cache_size, word_length, elems_vec_reg);
 
-    let blocking_size_j: i32 = 128;// blocksizes.0;     // rodent: c_size; < 128, otherwise change acc size above
-    let blocking_size_i: i32 = 8; // blocksizes.1;     // rodent: i_size
+    let blocking_size_j: i32 = 128; // blocksizes.0;     // rodent: c_size; <= 128, otherwise change acc size above
+    let blocking_size_i: i32 = 8;   // blocksizes.1;     // rodent: i_size
 
-    let jj_end_blocked: i32 = (mat.cols / blocking_size_j) * blocking_size_j;   // rodent: c_vec_len
+    let num_jj_blocks: i32  = mat.cols / blocking_size_j;
+    let vecs_per_block: i32 = blocking_size_j / elems_vec_reg;
+
+    let jj_end_blocked: i32 = num_jj_blocks * blocking_size_j;   // rodent: c_vec_len
     let ii_end_blocked: i32 = (last_ii  / blocking_size_i) * blocking_size_i;   // rodent: i_vec_len
 
-    // 0 -> jj_end_blocked
-    for jj in parallel_step(0, jj_end_blocked, blocking_size_j) {
-        let jj_block_end = jj + blocking_size_j;
+    let num_jj_vecs: i32 = (mat.cols - jj_end_blocked)/elems_vec_reg;
+    let jj_end_vecs: i32 = jj_end_blocked + num_jj_vecs * elems_vec_reg;
+    let jj_range_rest: i32 = mat.cols - jj_end_vecs;
 
-        capsule_outer_loops(jj, jj_block_end, blocking_size_j, k_end, blocking_size_i, ii_end_blocked, i_end, a_acc.read, b_acc.read, m_acc.read, m_acc.write, m_acc.accumulate, biases, act_fn);
+    // 0 -> jj_end_blocked
+    for jj_blocks in parallel(0, 0, num_jj_blocks) {
+
+        let jj: i32 = blocking_size_j * jj_blocks;
+        capsule_outer_loops_vec(jj, k_end, blocking_size_i, ii_end_blocked, i_end, elems_vec_reg, vecs_per_block, a_acc.read, b_acc.read, m_acc.read, m_acc.write, m_acc.accumulate, biases, act_fn);
     }
 
-    // TODO: Could call "_novec" immediately since this should never be vectorizable
-    // jj_end_blocked --> j_end, unvectorized
-    capsule_outer_loops(jj_end_blocked, j_end, blocking_size_j, k_end, blocking_size_i, ii_end_blocked, i_end, a_acc.read, b_acc.read, m_acc.read, m_acc.write, m_acc.accumulate, biases, act_fn);
+    // jj_end_blocked -> jj_end_vecs, not blocked anymore but stil vectorized
+    capsule_outer_loops_vec(jj_end_blocked, k_end, blocking_size_i, ii_end_blocked, i_end, elems_vec_reg, num_jj_vecs, a_acc.read, b_acc.read, m_acc.read, m_acc.write, m_acc.accumulate, biases,
+    act_fn);
+
+    // jj_end_vecs -> mat.cols, unblocked and unvectorized rest
+    capsule_outer_loops_novec(jj_end_vecs, jj_range_rest, k_end, blocking_size_i, ii_end_blocked, i_end, a_acc.read, b_acc.read, m_acc.read, m_acc.write, m_acc.accumulate, biases, act_fn);
 
     mat
 }
