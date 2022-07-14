@@ -176,7 +176,7 @@ struct NNDEN {
 
 //     /* Kernel matrices higher-order function to pass to the convolutions. */
 //     let flattened_kernels = @|i: i32| {
-//         make_matrix(kernels, offsets(i), MemoryFormat::CHW, 1, out_channels(i), ksize_sq * in_channels(i))
+//         make_matrix_from_buffer(kernels, offsets(i), MemoryFormat::CHW, 1, out_channels(i), ksize_sq * in_channels(i))
 //     };
 
 //     let sum_up_oc = @|n: i32| {
@@ -213,9 +213,13 @@ struct NNDEN {
 
 //     fn @forward_denoise(img: Buffer, albedo: Buffer, normal: Buffer, mem: Buffer, out_buf: Buffer) -> () {
 //         cpu_profile(&mut total_counter, || {
-//             let mut img_mat = make_matrix(img, 0, MemoryFormat::HWC, 3, height, width);
-//             let alb_mat  = make_matrix(albedo, 0, MemoryFormat::HWC, 3, height, width);
-//             let nrm_mat  = make_matrix(normal, 0, MemoryFormat::HWC, 3, height, width);
+//             let mut img_mat = make_matrix_from_buffer(img, 0, MemoryFormat::HWC, 3, height, width);
+//             let alb_mat = make_matrix_from_buffer(albedo, 0, MemoryFormat::HWC, 3, height, width);
+//             let nrm_mat = make_matrix_from_buffer(normal, 0, MemoryFormat::HWC, 3, height, width);
+
+//             // dump_mat_binary("img_mat.bm", img_mat.data, img_mat.rows, img_mat.cols, img_mat.channels);
+//             // dump_mat_binary("alb_mat.bm", alb_mat.data, alb_mat.rows, alb_mat.cols, alb_mat.channels);
+//             // dump_mat_binary("nrm_mat.bm", nrm_mat.data, nrm_mat.rows, nrm_mat.cols, nrm_mat.channels);
 
 //             let img_acc = get_mat_acc(img_mat);
 //             let alb_acc = get_mat_acc(alb_mat);
@@ -293,11 +297,14 @@ struct NNDEN {
 
 //             // Write result in output buffer (necessary since rodent expects hwc while conv2d returns chw format)
 //             nn_int.chw_to_hwc(img_mat, out_buf, 0);
+
+//             // dump_mat_binary("ref_mat.bm", img_mat.data, img_mat.rows, img_mat.cols, img_mat.channels);
 //         });
 //     }
 
 //     NNDEN { forward = forward_denoise, necess_mem = necess_mem }
 // }
+
 
 fn @make_oidn_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, height: i32) -> NNDEN {
     /* Kernel size and poolsize is the same for every convolution / pooling layer */
@@ -466,7 +473,7 @@ fn @make_oidn_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, hei
 
     /* Kernel matrices higher-order function to pass to the convolutions. */
     let flattened_kernels = @|i: i32| {
-        make_matrix(kernels, offsets(i), MemoryFormat::CHW, 1, out_channels(i), ksize_sq * in_channels(i))
+        make_matrix_from_buffer(kernels, offsets(i), MemoryFormat::CHW, 1, out_channels(i), ksize_sq * in_channels(i))
     };
 
     let sum_up_oc = @|n: i32| {
@@ -503,13 +510,17 @@ fn @make_oidn_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, hei
 
     fn @forward_denoise(img: Buffer, albedo: Buffer, normal: Buffer, mem: Buffer, out_buf: Buffer) -> () {
         cpu_profile(&mut total_counter, || {
-            let mut img_mat = make_matrix(img, 0, MemoryFormat::HWC, 3, height, width);
-            let alb_mat  = make_matrix(albedo, 0, MemoryFormat::HWC, 3, height, width);
-            let nrm_mat  = make_matrix(normal, 0, MemoryFormat::HWC, 3, height, width);
+            let mut img_mat = make_matrix_from_buffer(img, 0, MemoryFormat::HWC, 3, height, width);
+            let alb_mat = make_matrix_from_buffer(albedo, 0, MemoryFormat::HWC, 3, height, width);
+            let nrm_mat = make_matrix_from_buffer(normal, 0, MemoryFormat::HWC, 3, height, width);
 
             let img_acc = get_mat_acc(img_mat);
             let alb_acc = get_mat_acc(alb_mat);
             let nrm_acc = get_mat_acc(nrm_mat);
+
+            // dump_mat_binary("img_mat.bm", img_mat.data, img_mat.rows, img_mat.cols, img_mat.channels);
+            // dump_mat_binary("alb_mat.bm", alb_mat.data, alb_mat.rows, alb_mat.cols, alb_mat.channels);
+            // dump_mat_binary("nrm_mat.bm", nrm_mat.data, nrm_mat.rows, nrm_mat.cols, nrm_mat.channels);
 
             let input_acc = get_cat_mat_acc(get_cat_mat_acc(img_acc, alb_acc, img_mat.channels), nrm_acc, img_mat.channels + alb_mat.channels);
 
@@ -583,6 +594,8 @@ fn @make_oidn_nn(nn_int: NNInt, kernels: Buffer, biases: Buffer, width: i32, hei
 
             // Write result in output buffer (necessary since rodent expects hwc while conv2d returns chw format)
             nn_int.chw_to_hwc(img_mat, out_buf, 0);
+
+            // dump_mat_binary("ref_mat.bm", img_mat.data, img_mat.rows, img_mat.cols, img_mat.channels);
         });
     }
 

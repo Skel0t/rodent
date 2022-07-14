@@ -199,10 +199,10 @@ fn @calc_blocking_size(jj_loop_max: i32, ii_loop_max: i32, cache_size: i32, word
 }
 
 fn @matmul_cpu_par(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) -> Matrix {
-    let mat = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
-    let a_acc = get_mat_acc_e(a);
-    let b_acc = get_mat_acc_e(b);
-    let m_acc = get_mat_acc_e(mat);
+    let mat = make_matrix_from_buffer(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let a_acc = get_mat_acc_sc(a);
+    let b_acc = get_mat_acc_sc(b);
+    let m_acc = get_mat_acc_sc(mat);
 
     let l1_cache_size: i32 = 32000; // L1 cache size in byte
     let word_length: i32 = 4; // f32 has a length of 4 byte
@@ -268,16 +268,16 @@ fn @matmul_cpu_par(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32)
 }
 
 
-struct AccMe {
+struct AccMsc {
     read  : fn(i32, i32) -> f32,
     write : fn(i32, i32, f32) -> (),
     accumulate : fn(i32, i32, f32) -> ()
 }
 
-fn @get_mat_acc_e(mm: Matrix) -> AccMe {
-    AccMe {
-        read  = @|row, col|           { bitcast[&   [f32]](mm.buf.data)(mm.offset + (row * mm.cols + col) as i64)},
-        write      = @|row, col, val| { bitcast[&mut[f32]](mm.buf.data)(mm.offset + (row * mm.cols + col) as i64) = val; },
-        accumulate = @|row, col, val| { bitcast[&mut[f32]](mm.buf.data)(mm.offset + (row * mm.cols + col) as i64) += val; }
+fn @get_mat_acc_sc(mm: Matrix) -> AccMsc {
+    AccMsc {
+        read  = @|row, col|           { mm.data((row * mm.cols + col) as i64)},
+        write      = @|row, col, val| { mm.data((row * mm.cols + col) as i64) = val; },
+        accumulate = @|row, col, val| { mm.data((row * mm.cols + col) as i64) += val; }
     }
 }

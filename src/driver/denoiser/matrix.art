@@ -3,8 +3,7 @@ enum MemoryFormat {
 }
 
 struct Matrix {
-    buf      : Buffer,
-    offset   : i64,
+    data     : &mut[f32],
     channels : i32,
     format   : MemoryFormat,
     rows     : i32,
@@ -16,8 +15,12 @@ struct AccM {
     write : fn(i32, i32, i32, f32) -> ()
 }
 
-fn @make_matrix(buffer: Buffer, offset: i64, format: MemoryFormat, channels: i32, rows: i32, cols: i32) -> Matrix {
-    Matrix { buf = buffer, offset = offset, format = format, channels = channels, rows = rows, cols = cols }
+fn @make_matrix_from_buffer(buffer: Buffer, offset: i64, format: MemoryFormat, channels: i32, rows: i32, cols: i32) -> Matrix {
+    Matrix { data = bitcast[&mut[f32]](&(buffer.data(sizeof[f32]() * offset))), format = format, channels = channels, rows = rows, cols = cols }
+}
+
+fn @make_matrix(data: &mut[f32], format: MemoryFormat, channels: i32, rows: i32, cols: i32) -> Matrix {
+    Matrix { data = data, format = format, channels = channels, rows = rows, cols = cols }
 }
 
 /* Returns a Matrix accessor, no matter the memory format (CHW or HWC)
@@ -25,15 +28,15 @@ fn @make_matrix(buffer: Buffer, offset: i64, format: MemoryFormat, channels: i32
 fn @get_mat_acc(m: Matrix) -> AccM {
     fn @get_mat_acc_hwc(m: Matrix) -> AccM {
         AccM {
-            read  = @|row, col, chn|      { bitcast[&   [f32]](m.buf.data)(m.offset + ((row * m.cols + col) * m.channels + chn) as i64) },
-            write = @|row, col, chn, val| { bitcast[&mut[f32]](m.buf.data)(m.offset + ((row * m.cols + col) * m.channels + chn) as i64) = val; }
+            read  = @|row, col, chn|      { m.data(((row * m.cols + col) * m.channels + chn) as i64) },
+            write = @|row, col, chn, val| { m.data(((row * m.cols + col) * m.channels + chn) as i64) = val; }
         }
     }
 
     fn @get_mat_acc_chw(m: Matrix) -> AccM {
         AccM {
-            read  = @|row, col, chn|      { bitcast[&   [f32]](m.buf.data)(m.offset + (row * m.cols + col + chn * m.cols * m.rows) as i64) },
-            write = @|row, col, chn, val| { bitcast[&mut[f32]](m.buf.data)(m.offset + (row * m.cols + col + chn * m.cols * m.rows) as i64) = val; }
+            read  = @|row, col, chn|      { m.data((row * m.cols + col + chn * m.cols * m.rows) as i64) },
+            write = @|row, col, chn, val| { m.data((row * m.cols + col + chn * m.cols * m.rows) as i64) = val; }
         }
     }
 
@@ -55,7 +58,7 @@ fn @get_cat_mat_acc(acc1: AccM, acc2: AccM, channels1: i32) -> AccM {
 
 /* a and b need to have same channel format. */
 fn @matmul_cpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) -> Matrix {
-    let mat = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let mat   = make_matrix_from_buffer(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     let a_acc = get_mat_acc(a);
     let b_acc = get_mat_acc(b);
     let m_acc = get_mat_acc(mat);
@@ -152,11 +155,9 @@ fn @matmul_cpu(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> 
 
 /* a and b need to have same channel format */
 fn @matmul_oneapi(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
-    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let c = make_matrix_from_buffer(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     mkl_blas_mm_mult(/*m*/ a.rows, /*n*/ b.cols, /*k*/ a.cols,
-        /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))),
-        /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))),
-        /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))));
+                     /*a*/ a.data, /*b*/ b.data, /*c*/ c.data);
 
     for acc, v, row, col, chn in iterate_matrix_par(c) {
         acc.write(row, col, chn, act_fn(v + biases(row)));  // 1 channel per row, thus access  row-th bias
@@ -167,7 +168,7 @@ fn @matmul_oneapi(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
 fn @matmul_gpu_naive(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
     let acc = cuda_accelerator(0);
 
-    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let c = make_matrix_from_buffer(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
 
     let a_acc = get_mat_acc(a);
     let b_acc = get_mat_acc(b);
@@ -198,7 +199,7 @@ fn @matmul_gpu_naive(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f3
 fn @matmul_gpu_try(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) -> f32, buf: Buffer, off: i64) {
     let acc = cuda_accelerator(0);
 
-    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let c = make_matrix_from_buffer(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
 
     let a_acc = get_mat_acc(a);
     let b_acc = get_mat_acc(b);
@@ -288,7 +289,7 @@ fn @matmul_cublas(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
     let device = 0;
     let acc = cuda_accelerator(device);
 
-    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let c = make_matrix_from_buffer(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     let c_acc = get_mat_acc(c);
 
     let threads_x = 32;
@@ -297,9 +298,7 @@ fn @matmul_cublas(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32) 
     let grid  = (round_up(c.cols, threads_x), round_up(c.rows, threads_y), c.channels);
 
     cublas_S_gemm(
-        /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))),
-        /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))),
-        /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))),
+        /*a*/   a.data, /*b*/   b.data, /*c*/   c.data,
         /*lda*/ a.cols, /*ldb*/ a.rows, /*ldc*/ b.cols, device);
 
     for work_item in acc.exec(grid, block) {
@@ -321,7 +320,7 @@ fn @matmul_cublaslt(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32
     let device = 0;
     let acc = cuda_accelerator(device);
 
-    let c = make_matrix(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
+    let c = make_matrix_from_buffer(buf, off, MemoryFormat::HWC, 1, a.rows, b.cols);
     let c_acc = get_mat_acc(c);
 
     let threads_x = 32;
@@ -333,9 +332,7 @@ fn @matmul_cublaslt(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32
     acc.sync();
 
     cublaslt_S_gemm(
-        /*a*/ bitcast[&   [f32]](&(a.buf.data(4 * a.offset))),
-        /*b*/ bitcast[&   [f32]](&(b.buf.data(4 * b.offset))),
-        /*c*/ bitcast[&mut[f32]](&(c.buf.data(4 * c.offset))),
+        /*a*/   a.data, /*b*/   b.data, /*c*/   c.data,
         /*lda*/ a.cols, /*ldb*/ a.rows, /*ldc*/ b.cols, device);
 
     for work_item in acc.exec(grid, block) {
@@ -355,7 +352,7 @@ fn @matmul_cublaslt(a: Matrix, b: Matrix, biases: fn(i32) -> f32, act_fn: fn(f32
 
 /* Matrices a and b need to have the same dimensions. */
 fn @add_element_wise_cpu(a: Matrix, b_acc: AccM, buf: Buffer, off: i64) -> Matrix {
-    let res = make_matrix(buf, off, a.format, a.channels, a.rows, a.cols);
+    let res = make_matrix_from_buffer(buf, off, a.format, a.channels, a.rows, a.cols);
 
     let res_acc  = get_mat_acc(res);
 
@@ -370,7 +367,7 @@ fn @add_element_wise_cpu(a: Matrix, b_acc: AccM, buf: Buffer, off: i64) -> Matri
 fn @add_element_wise_gpu(a: Matrix, b_acc: AccM, buf: Buffer, off: i64) -> Matrix {
     let acc = cuda_accelerator(0);
 
-    let res_mat = make_matrix(buf, off, a.format, a.channels, a.rows, a.cols);
+    let res_mat = make_matrix_from_buffer(buf, off, a.format, a.channels, a.rows, a.cols);
 
     let res_acc = get_mat_acc(res_mat);
     let a_acc   = get_mat_acc(a);
@@ -396,7 +393,7 @@ fn @add_element_wise_gpu(a: Matrix, b_acc: AccM, buf: Buffer, off: i64) -> Matri
 
 /* Copies the given matrix to the given buffer and offset in HWC format. */
 fn @chw_to_hwc_cpu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
-    let res = make_matrix(buf, off, MemoryFormat::HWC, img_mat.channels, img_mat.rows, img_mat.cols);
+    let res = make_matrix_from_buffer(buf, off, MemoryFormat::HWC, img_mat.channels, img_mat.rows, img_mat.cols);
 
     let img_acc = get_mat_acc(img_mat);
 
@@ -410,7 +407,7 @@ fn @chw_to_hwc_cpu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
 fn @chw_to_hwc_gpu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
     let acc = cuda_accelerator(0);
 
-    let res_mat = make_matrix(buf, off, MemoryFormat::HWC, img_mat.channels, img_mat.rows, img_mat.cols);
+    let res_mat = make_matrix_from_buffer(buf, off, MemoryFormat::HWC, img_mat.channels, img_mat.rows, img_mat.cols);
     let img_acc = get_mat_acc(img_mat);
     let res_acc = get_mat_acc(res_mat);
 

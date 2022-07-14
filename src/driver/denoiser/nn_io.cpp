@@ -105,6 +105,26 @@ void read_in_biases(float* buffer, int& offset, std::string path, int out_channe
     // std::cout << "read biases: " << path << " with offset " << offset << std::endl;
 }
 
+void read_in_matrix_bytes_hwc(float* buffer, std::string path, int channels, int rows, int cols) {
+    std::ifstream f;
+    f.open(path, std::ios::binary);
+    if (!f) {
+        std::cout << "Couldn't open " << path << std::endl;
+        throw std::invalid_argument(path);
+    } else {
+        float val;
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                for (int chn = 0; chn < channels; chn++) {
+                    f.read((char*) &val, sizeof(float));
+                    buffer[r * cols * channels + c * channels + chn] = val;
+                }
+            }
+        }
+    }
+    f.close();
+}
+
 void read_in_matrix_chw(float* buffer, std::string path, int channels, int rows, int cols) {
     std::fstream f;
     f.open(path, std::ios::in);
@@ -134,6 +154,20 @@ void read_in_matrix_hwc(float* buffer, std::string path, int channels, int rows,
             for (int col = 0; col < cols; col++) {
                 for (int chn = 0; chn < channels; chn++) {
                     f >> buffer[row * cols * channels + col * channels + chn];
+                }
+            }
+        }
+    }
+}
+
+extern "C" {
+    void dump_mat_binary(const char* file_name, const float* ptr, int32_t rows, int32_t cols, int32_t channels) {
+        std::ofstream file(file_name, std::ios::binary);
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                for (int chn = 0; chn < channels; chn++) {
+                    const float val = ptr[((r * cols + c) * channels + chn)];
+                    file.write((char*) &val, sizeof(float));
                 }
             }
         }

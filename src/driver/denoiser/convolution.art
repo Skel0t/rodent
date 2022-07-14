@@ -20,9 +20,7 @@ fn @im2col_cpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_he
     let img_s    = (out_width as i64) * (out_height as i64);
     let ksize_sq = (ksize as i64) * (ksize as i64);
 
-    let bc = bitcast[&mut[f32]](buf.data);
-
-    let res_mat = make_matrix(buf, off, MemoryFormat::CHW, 1, channels * ksize_sq as i32, img_s as i32);
+    let res_mat = make_matrix_from_buffer(buf, off, MemoryFormat::CHW, 1, channels * ksize_sq as i32, img_s as i32);
 
     for chn in parallel(0, 0, channels) {
         for r in range(0, out_height) {
@@ -39,9 +37,9 @@ fn @im2col_cpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_he
                         let w = p_col + x;
 
                         if unlikely(h < 0 || w < 0 || h >= in_height || w >= in_width) {
-                            bc(off + base_row + (base_col as i64)) = 0; /* zero-padding */
+                            res_mat.data(base_row + (base_col as i64)) = 0; /* zero-padding */
                         } else {
-                            bc(off + base_row + (base_col as i64)) = img_acc.read(h, w, chn);
+                            res_mat.data(base_row + (base_col as i64)) = img_acc.read(h, w, chn);
                         }
 
                         base_row += img_s;
@@ -61,8 +59,7 @@ fn @im2col_gpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_he
     let img_s    = out_width * out_height;
     let ksize_sq = (ksize as i64) * (ksize as i64);
 
-    let bc = bitcast[&mut[f32]](buf.data);
-    let res_mat = make_matrix(buf, off, MemoryFormat::CHW, 1, channels * ksize_sq as i32, img_s);
+    let res_mat = make_matrix_from_buffer(buf, off, MemoryFormat::CHW, 1, channels * ksize_sq as i32, img_s);
 
     let i_size = 32;    // Image (w*h) dimension
     let c_size = 8;     // Channel dimension
@@ -90,9 +87,9 @@ fn @im2col_gpu(ksize: i32, out_width: i32, out_height: i32, in_width: i32, in_he
                     let w = p_col + x;
 
                     if h < 0 || w < 0 || h >= in_height || w >= in_width {
-                        bc(off + base_row + (base_col as i64)) = 0; /* zero-padding */
+                        res_mat.data(base_row + (base_col as i64)) = 0; /* zero-padding */
                     } else {
-                        bc(off + base_row + (base_col as i64)) = img_acc.read(h, w, chn);
+                        res_mat.data(base_row + (base_col as i64)) = img_acc.read(h, w, chn);
                     }
 
                     base_row += img_s as i64;
@@ -138,5 +135,5 @@ fn @cat_conv2d(nn_int: NNInt, ksize: i32, out_channels: i32, in_channels: i32, f
     );
 
     // Reshape matrix for future use, no values are changed
-    make_matrix(prod.buf, prod.offset, MemoryFormat::CHW, out_channels, out_height, out_width)
+    make_matrix(prod.data, MemoryFormat::CHW, out_channels, out_height, out_width)
 }

@@ -8,5 +8,6 @@ void read_in_matrix_hwc(float* buffer, std::string path, int channels, int rows,
 void read_in_biases(float* buffer, int& offset, std::string path, int out_channels);
 void read_in_weigths_bytes_chw(float* buffer, int offset, std::string path, int in_channels, int out_channels, int ksize);
 void read_in_biases_bytes(float* buffer, int& offset, std::string path, int out_channels);
+void read_in_matrix_bytes_hwc(float* buffer, std::string path, int channels, int rows, int cols);
 
 #endif /* NN_H */

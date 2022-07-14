@@ -11,7 +11,7 @@ fn @make_pool_fn(nn_int: NNInt, kernelsize: i32, pooling_fn: fn(fn(i32) -> f32) 
    in-place, other threads might read wrong values that were written in-place
    from another pooling thread. To pool in-place, please use pool_inplace. */
 fn @pool_cpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, buf: Buffer, off: i64) -> Matrix {
-    let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
+    let res_mat = make_matrix_from_buffer(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
     let img_acc = get_mat_acc(img_mat);
 
     cpu_profile(&mut pool_counter, || {
@@ -39,7 +39,7 @@ fn @pool_cpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, 
 
 /* Does the same as pool_cpu, but without parallelism and therefore allows in-place pooling. */
 fn @pool_cpu_inplace(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, buf: Buffer, off: i64) -> Matrix {
-    let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
+    let res_mat = make_matrix_from_buffer(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
     let img_acc = get_mat_acc(img_mat);
 
     /* Needs at least size-many elements.
@@ -68,7 +68,7 @@ fn @pool_cpu_inplace(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) 
 fn @pool_gpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, buf: Buffer, off: i64) -> Matrix {
     let acc = cuda_accelerator(0);
 
-    let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
+    let res_mat = make_matrix_from_buffer(buf, off, img_mat.format, img_mat.channels, img_mat.rows / size, img_mat.cols / size);
     let img_acc = get_mat_acc(img_mat);
     let r_acc   = get_mat_acc(res_mat);
 
@@ -109,7 +109,7 @@ fn @pool_gpu(img_mat: Matrix, size: i32, pooling_fn: fn(fn(i32) -> f32) -> f32, 
 
 /* Explicitly performs nearest-neighbor upsampling, saving the result at buf at position off. */
 fn @nearest_cpu(img_mat: Matrix, buf: Buffer, off: i64) -> Matrix {
-    let res_mat = make_matrix(buf, off, img_mat.format, img_mat.channels, img_mat.rows * 2, img_mat.cols * 2);
+    let res_mat = make_matrix_from_buffer(buf, off, img_mat.format, img_mat.channels, img_mat.rows * 2, img_mat.cols * 2);
 
     let img_acc = get_mat_acc(img_mat);
 
