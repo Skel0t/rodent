@@ -1,0 +1,61 @@
+Benchmarking time:
+--------------------------------------------------------------------------------
+Benchmarking device 0 on platform cpu with 100/10 iterations/warmup
+--------------------------------------------------------------------------------
+denoise512:
+Average Time:	575 ms
+
+denoise1k:
+Average Time:	2427 ms
+
+sres512:
+Average Time:	620 ms
+
+sres1k:
+Average Time:	2692 ms
+
+--------------------------------------------------------------------------------
+Benchmarking device 0 on platform oneapi with 100/10 iterations/warmup
+--------------------------------------------------------------------------------
+denoise512:
+Average Time:	508 ms
+
+denoise1k:
+Average Time:	2262 ms
+
+sres512:
+Average Time:	603 ms
+
+sres1k:
+Average Time:	2511 ms
+
+--------------------------------------------------------------------------------
+Benchmarking device 0 on platform cuda with 600/100 iterations/warmup
+--------------------------------------------------------------------------------
+denoise512:
+Average Time:	111 ms
+
+denoise1k:
+Average Time:	462 ms
+
+sres512:
+Average Time:	83 ms
+
+sres1k:
+Average Time:	346 ms
+
+--------------------------------------------------------------------------------
+Benchmarking device 0 on platform cublas with 600/100 iterations/warmup
+--------------------------------------------------------------------------------
+denoise512:
+Average Time:	38 ms
+
+denoise1k:
+Average Time:	136 ms
+
+sres512:
+Average Time:	30 ms
+
+sres1k:
+Average Time:	114 ms
+
