@@ -18,16 +18,16 @@ fn @get_cpu_nn() -> NNInt {
     }
 }
 
-// fn @get_oneapi_nn() -> NNInt {
-//     NNInt {
-//         matmul     = matmul_oneapi,
-//         im2col     = im2col_cpu,
-//         pool       = pool_cpu,
-//         // nearest    = nearest_cpu,
-//         add_element_wise = add_element_wise_cpu,
-//         chw_to_hwc = chw_to_hwc_cpu
-//     }
-// }
+fn @get_oneapi_nn() -> NNInt {
+    NNInt {
+        matmul     = matmul_oneapi,
+        im2col     = im2col_cpu,
+        pool       = pool_cpu,
+        // nearest    = nearest_cpu,
+        add_element_wise = add_element_wise_cpu,
+        chw_to_hwc = chw_to_hwc_cpu
+    }
+}
 
 fn @get_cuda_nn() -> NNInt {
     NNInt {
@@ -40,16 +40,16 @@ fn @get_cuda_nn() -> NNInt {
     }
 }
 
-// fn @get_cublas_nn() -> NNInt {
-//     NNInt {
-//         matmul     = matmul_cublas,
-//         im2col     = im2col_gpu,
-//         pool       = pool_gpu,
-//         // nearest    = nearest_cpu,
-//         add_element_wise = add_element_wise_gpu,
-//         chw_to_hwc = chw_to_hwc_gpu
-//     }
-// }
+fn @get_cublas_nn() -> NNInt {
+    NNInt {
+        matmul     = matmul_cublas,
+        im2col     = im2col_gpu,
+        pool       = pool_gpu,
+        // nearest    = nearest_cpu,
+        add_element_wise = add_element_wise_gpu,
+        chw_to_hwc = chw_to_hwc_gpu
+    }
+}
 
 // fn @get_cublaslt_nn() -> NNInt {
 //     NNInt {

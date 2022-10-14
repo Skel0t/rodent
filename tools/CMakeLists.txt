@@ -2,7 +2,6 @@
 # C/C++ header file that is used by some other tools.
 # add_subdirectory(bench_traversal)
 
-add_subdirectory(bench_convolution)
 # add_subdirectory(bench_interface)
 # add_subdirectory(bench_shading)
 
