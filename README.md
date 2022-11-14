@@ -45,67 +45,60 @@ setting the forwarding functions one does not need in `src/driver/denoiser/inter
 
 # Benchmarking
 
-For benchmarking the forward propagation implementation, we provide four pre-written
-benchmarks. These can be found in `tools/bench_convolution/`.
-The provided benchmarks each propagate real dumped data through a sample neural
-network and time how long the execution takes.
+The forward propagation of the denoising neural network was benchmarked on an AMD Ryzen 9 5900X with 3200MHz DDR4 RAM and an nVidia Geforce GTX 1080. On the same build, another neural network (a super resolution network was tested) to achieve the following results:
 
-All benchmarks accept 4 arguments:
- - Number of times to average over
- - Number of warmup iterations before timing
- - Backend to use
- - Boolean, whether the computed result should be compared to a precalculated reference
+| Benchmark           | Backend        | Execution Time | % spent in mm | % spent in im2col
+--------------------- | -------------- | -------------- | ------------- | -----------------
+|denoise on 512x512   | CPU AnyDSL     | 366 ms         | 58            | 41
+|denoise on 512x512   | CPU oneAPI     | 344 ms         | 54            | 44
+|denoise on 512x512   | GPU AnyDSL     | 114 ms         | 87            | 12
+|denoise on 512x512   | GPU cuBLAS     | 38  ms         | 64            | 34
 
-Run a specific benchmark with `bin/bench_convolution` and arguments:
- - `--bench benchmark` to choose a benchmark (denoise512 denoise1k sres512 sres1k)
- - `--iterations iter` to choose the number of iterations
- - `--warmup iter` to choose the number of warmup iterations before timing
- - `--backend backend` to choose the backend (cpu oneapi cuda cublas cublaslt)
- - `--check` to activate the check if the calculated result is correct
+| Benchmark           | Backend        | Execution Time | % spent in mm | % spent in im2col
+--------------------- | -------------- | -------------- | ------------- | -----------------
+|denoise on 1024x1024 | CPU AnyDSL     | 1467 ms        | 53            | 46
+|denoise on 1024x1024 | CPU oneAPI     | 1403 ms        | 50            | 48
+|denoise on 1024x1024 | GPU AnyDSL     | 475  ms        | 88            | 11
+|denoise on 1024x1024 | GPU cuBLAS     | 135  ms        | 60            | 38
 
-We also provide a script in `bin/bench_convolution/bench_all.sh` which by default
-runs all benchmarks on all devices and prints the results in a textfile.
-This script additionally measures metrics and performance counters for GPU and CPU.
-For performance counters and metrics, the dependencies `perf` (CPU) and `nvprof` (GPU)
-are required. It might be necessary to run the script elevated for the metrics as
-otherwise, it might not have the required rights to read them.
+| Benchmark           | Backend        | Execution Time | % spent in mm | % spent in im2col
+--------------------- | -------------- | -------------- | ------------- | -----------------
+|S.resolution (4x) to 512 | CPU AnyDSL | 319 ms         | 51            | 48
+|S.resolution (4x) to 512 | CPU oneAPI | 308 ms         | 46            | 53
+|S.resolution (4x) to 512 | GPU AnyDSL | 84  ms         | 83            | 16
+|S.resolution (4x) to 512 | GPU cuBLAS | 30  ms         | 57            | 42
 
-Profiling where time is spent during forwarding can be done by setting
+| Benchmark           | Backend        | Execution Time | % spent in mm | % spent in im2col
+--------------------- | -------------- | -------------- | ------------- | -----------------
+|S.resolution (4x) to 1024 | CPU AnyDSL| 1315 ms        | 45            | 54
+|S.resolution (4x) to 1024 | CPU oneAPI| 1253 ms        | 42            | 57
+|S.resolution (4x) to 1024 | GPU AnyDSL| 351  ms        | 84            | 14
+|S.resolution (4x) to 1024 | GPU cuBLAS| 113  ms        | 55            | 44
+
+The results in these tables were obtained by following these steps:
+
+1. Train a NN with the help of another library, e.g., PyTorch
+2. Dump the weights into a binary, with a loop over the parameters similar to one like the following example:
+```cpp
+for (int i = 0; i < out_channels; i++) {
+int k_nr = i * in_channels * ksize * ksize;
+    for (int j = 0; j < in_channels; j++) {
+        for (int y = 0; y < ksize; y++) {
+            int k_row = y * ksize;
+            for (int x = 0; x < ksize; x++) {
+                const float val = ptr[k_nr + k_row + x + j * ksize * ksize];
+                file.write((char*) &val, sizeof(float));
+            }
+        }
+    }
+}
 ```
+3. Optional: Dump example forward propagation to later compare your result against (to check that the calculation is correct)
+4. Read in the weights with the help of an appropiate function in `src/driver/nn_io.h`
+5. Use the weights in a network model design like shown in `src/driver/nn.art`
+6. Optional: In `src/core/cpu_common.impala`, to measure where time was spent, set:
+```rust
 static cpu_profiling_enabled = true;
 static cpu_profiling_serial  = true;
 ```
-in `src/core/cpu_common.impala`. Currently, these flags are set to `false`. When
-executing Rodent on the CPU, both flags should be set to false since Rodent uses them
-for profiling as well.
-
-# Intel's Open Image Denoise
-
-As the goal was to integrate a native denoiser into Rodent, leaving the dependency
-of having installed OIDN would not add much value and would make the code less
-readable. Therefore, the integration of OIDN, which was described in my thesis, is
-not included in the end result anymore.
-
-However, I left the git history in this submission such that one can fall back to the OIDN integration and test it. The corresponding commit can be reached with
-
-```
-git checkout oidn
-```
-
-However, the CLI worked slightly differently at that commit. To denoise with OIDN,
-add the `--oidn` flag to Rodent's execution.
-
-To return to the actual implementation again, use
-
-```
-git checkout artic
-```
-
-# About the Segfault when executing Rodent on the CPU
-
-When Rodent is executed on the CPU (default), a segfault happens at the very end,
-when rendering is stopped.
-This segfault already happens in the default version that I forked to implement
-the denoiser. Thus, my code should be segfault-free and also release all memory
-allocated by me. Executing Rodent with, for example, the `nvvm`
-backend does not cause a segfault.
+7. Write a script that can time the execution over several runs, with optionally some profiling metrics and a warmup period
